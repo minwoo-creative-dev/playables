@@ -12,6 +12,8 @@
 #
 # 동작: HTML 복사 → meta.json 갱신(제목/게임/번호/컨셉/날짜/메모) → 목록 재생성 → commit → push
 set -euo pipefail
+# .command 더블클릭 등 비대화형 실행에서도 git/gh/node 를 찾도록 PATH 보강
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 cd "$(dirname "$0")"
 
 NAME="${1:?폴더명을 입력하세요 (규칙: playable_<게임>_<번호>_<컨셉>, 예: playable_cc_02_puzzle)}"
@@ -47,7 +49,13 @@ FOLDER="$NAME" TITLE="$TITLE" NOTE="$NOTE" DATE="$(date +%Y-%m-%d)" node -e '
 
 node gen-index.js
 git add -A
-git commit -m "publish: $NAME" -q
-git push -q
+if git diff --cached --quiet; then
+  echo "ℹ️ 변경 없음(동일 내용) — 커밋/푸시 생략"
+else
+  git commit -m "publish: $NAME" -q
+  git push -q
+  # Pages(legacy) 빌드 끼임 예방: 최신 커밋으로 강제 재빌드 요청
+  gh api -X POST /repos/minwoo-creative-dev/playables/pages/builds >/dev/null 2>&1 || true
+fi
 echo "✅ 배포 완료 → https://minwoo-creative-dev.github.io/playables/$NAME/"
 echo "   목록: https://minwoo-creative-dev.github.io/playables/  (반영 30초~1분)"

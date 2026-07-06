@@ -3,7 +3,7 @@
   "game": "cc",
   "num": "01",
   "concept": "gacha",
-  "note": "",
+  "note": "게시버튼 연동 테스트",
   "createdAt": "2026-07-06",
   "updatedAt": "2026-07-06"
 }
