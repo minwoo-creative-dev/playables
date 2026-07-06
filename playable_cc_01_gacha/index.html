@@ -1,0 +1,1902 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="ad.size" content="width=100%,height=100%">
+<title>CC Gacha</title>
+<style>
+/* =============================================
+ *  PLAYABLE AD STYLES — Image Gacha (Free Node)
+ *  - stage 안에서 모든 노드는 % 좌표로 자유 배치
+ *  - 폰트 사이즈는 stage 짧은 변(vmin in stage)의 % 기준
+ *  - 좌표/크기는 nodes[].rect 의 {x,y,w,h} (모두 %)
+ * ============================================= */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+
+#contentBox {
+  position: absolute;
+  background: #1a1a23;
+  overflow: hidden;
+  transform-origin: center center;
+  /* stage 단위(--su) = 짧은 변 1% — 노드 폰트사이즈/스트로크에 사용 */
+  --su: 1px;
+}
+
+/* 씬 레이어 — 기본은 즉시 전환. scene.transition 설정 시 클래스로 in/out anim */
+.sceneLayer {
+  position: absolute;
+  inset: 0;
+}
+
+/* ── 씬 트랜지션 (in / out) ─────────────────── */
+.sceneLayer.scn-fade-in            { animation: scn-fade-in            var(--scn-dur, 0.5s) ease forwards; }
+.sceneLayer.scn-fade-out           { animation: scn-fade-out           var(--scn-dur, 0.5s) ease forwards; }
+.sceneLayer.scn-slide-left-in      { animation: scn-slide-left-in      var(--scn-dur, 0.5s) cubic-bezier(0.2, 0.9, 0.3, 1) forwards; }
+.sceneLayer.scn-slide-left-out     { animation: scn-slide-left-out     var(--scn-dur, 0.5s) cubic-bezier(0.2, 0.9, 0.3, 1) forwards; }
+.sceneLayer.scn-slide-right-in     { animation: scn-slide-right-in     var(--scn-dur, 0.5s) cubic-bezier(0.2, 0.9, 0.3, 1) forwards; }
+.sceneLayer.scn-slide-right-out    { animation: scn-slide-right-out    var(--scn-dur, 0.5s) cubic-bezier(0.2, 0.9, 0.3, 1) forwards; }
+.sceneLayer.scn-slide-top-in       { animation: scn-slide-top-in       var(--scn-dur, 0.5s) cubic-bezier(0.2, 0.9, 0.3, 1) forwards; }
+.sceneLayer.scn-slide-top-out      { animation: scn-slide-top-out      var(--scn-dur, 0.5s) cubic-bezier(0.2, 0.9, 0.3, 1) forwards; }
+.sceneLayer.scn-slide-bottom-in    { animation: scn-slide-bottom-in    var(--scn-dur, 0.5s) cubic-bezier(0.2, 0.9, 0.3, 1) forwards; }
+.sceneLayer.scn-slide-bottom-out   { animation: scn-slide-bottom-out   var(--scn-dur, 0.5s) cubic-bezier(0.2, 0.9, 0.3, 1) forwards; }
+.sceneLayer.scn-zoom-in-in         { animation: scn-zoom-in-in         var(--scn-dur, 0.5s) cubic-bezier(0.2, 0.9, 0.3, 1) forwards; }
+.sceneLayer.scn-zoom-in-out        { animation: scn-zoom-in-out        var(--scn-dur, 0.5s) ease-in forwards; }
+.sceneLayer.scn-zoom-out-in        { animation: scn-zoom-out-in        var(--scn-dur, 0.5s) ease-out forwards; }
+.sceneLayer.scn-zoom-out-out       { animation: scn-zoom-out-out       var(--scn-dur, 0.5s) cubic-bezier(0.2, 0.9, 0.3, 1) forwards; }
+.sceneLayer.scn-flash-in           { animation: scn-flash-in           var(--scn-dur, 0.3s) ease forwards; }
+.sceneLayer.scn-flash-out          { animation: scn-flash-out          var(--scn-dur, 0.3s) ease forwards; }
+
+@keyframes scn-fade-in            { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scn-fade-out           { from { opacity: 1; } to { opacity: 0; } }
+@keyframes scn-slide-left-in      { from { transform: translateX(100%);  } to { transform: translateX(0); } }
+@keyframes scn-slide-left-out     { from { transform: translateX(0);     } to { transform: translateX(-100%); } }
+@keyframes scn-slide-right-in     { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes scn-slide-right-out    { from { transform: translateX(0);     } to { transform: translateX(100%); } }
+@keyframes scn-slide-top-in       { from { transform: translateY(100%);  } to { transform: translateY(0); } }
+@keyframes scn-slide-top-out      { from { transform: translateY(0);     } to { transform: translateY(-100%); } }
+@keyframes scn-slide-bottom-in    { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+@keyframes scn-slide-bottom-out   { from { transform: translateY(0);     } to { transform: translateY(100%); } }
+@keyframes scn-zoom-in-in         { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes scn-zoom-in-out        { from { transform: scale(1);   opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+@keyframes scn-zoom-out-in        { from { transform: scale(1.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes scn-zoom-out-out       { from { transform: scale(1);   opacity: 1; } to { transform: scale(0.6); opacity: 0; } }
+@keyframes scn-flash-in           { 0% { opacity: 0; filter: brightness(3); } 40% { opacity: 1; filter: brightness(3); } 100% { opacity: 1; filter: brightness(1); } }
+/* 이전 씬을 붙잡지 않고 밝기 피크(35~50%) 동안 빠르게 사라지게 → 배경채우기(투명 레이어) 상태에서도 잔상 없음 */
+@keyframes scn-flash-out          { 0% { opacity: 1; filter: brightness(1); } 35% { opacity: 1; filter: brightness(3); } 50% { opacity: 0; filter: brightness(3); } 100% { opacity: 0; filter: brightness(2); } }
+
+/* 배경 (씬마다 하나) */
+.scene-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* 씬 위 자유 탭 영역 (onTap이 있을 때) */
+.scene-taparea {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+/* 노드 공통 */
+.node {
+  position: absolute;
+  /* rect.x/y/w/h 는 인라인 style 로 % 지정 */
+}
+
+/* 이미지 노드 */
+.node.kind-image {
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* 텍스트 노드 */
+.node.kind-text {
+  display: flex;
+  align-items: center;            /* 기본 = middle */
+  white-space: pre-wrap;
+  pointer-events: none;
+  line-height: 1.15;
+  overflow: visible;
+  /* stroke가 글자 안쪽을 잠식하지 않도록 — stroke를 먼저 그리고 fill을 위에 덮음 */
+  paint-order: stroke fill;
+}
+.node.kind-text.align-left   { justify-content: flex-start; text-align: left; }
+.node.kind-text.align-center { justify-content: center;     text-align: center; }
+.node.kind-text.align-right  { justify-content: flex-end;   text-align: right; }
+.node.kind-text.valign-top    { align-items: flex-start; }
+.node.kind-text.valign-middle { align-items: center; }
+.node.kind-text.valign-bottom { align-items: flex-end; }
+.node.kind-text > span {
+  display: inline-block;
+  width: 100%;
+}
+
+/* 버튼 노드 (이미지+라벨 또는 단독) */
+.node.kind-button {
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: 0;
+  background-color: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1a0d00;
+  font-weight: 900;
+}
+.node.kind-button.has-bg-color { background-color: var(--bg, #ff8a1f); }
+
+/* 도형 노드 */
+.node.kind-shape {
+  background-color: var(--shape-fill, #ff8a3d);
+  box-sizing: border-box;
+}
+.node.kind-shape.shape-circle  { border-radius: 50%; }
+.node.kind-shape.shape-ellipse { border-radius: 50%; }
+.node.kind-shape.shape-triangle      { clip-path: polygon(50% 0, 0 100%, 100% 100%); }
+.node.kind-shape.shape-right-triangle{ clip-path: polygon(0 0, 100% 100%, 0 100%); }
+.node.kind-shape.shape-pentagon      { clip-path: polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%); }
+.node.kind-shape.shape-hexagon       { clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
+.node.kind-shape.shape-star          { clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+/* shape-rect / shape-parallelogram / shape-trapezoid 는 inline clip-path / borderRadius 적용 */
+
+/* 노드 애니메이션 — 룬타임에서 anim 속성으로 클래스 부여 */
+.node.anim-pop  { animation: na-pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) forwards; }
+@keyframes na-pop {
+  0%   { transform: scale(0.5); opacity: 0; }
+  60%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.node.anim-pop-delayed { opacity: 0; animation: na-pop 0.55s cubic-bezier(0.2,1.6,0.4,1) forwards; animation-delay: 0.9s; }
+
+.node.anim-bob { animation: na-bob 1.6s ease-in-out infinite; }
+@keyframes na-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(calc(var(--su) * -1.5 * var(--anim-amp-loop, 1))); }
+}
+
+.node.anim-shake { animation: na-shake 0.18s ease-in-out infinite; }
+@keyframes na-shake {
+  0%, 100% { transform: translate(0, 0); }
+  25%      { transform: translate(calc(var(--su) * -0.5 * var(--anim-amp-loop, 1)), calc(var(--su) * 0.4 * var(--anim-amp-loop, 1))); }
+  75%      { transform: translate(calc(var(--su) * 0.5 * var(--anim-amp-loop, 1)),  calc(var(--su) * -0.4 * var(--anim-amp-loop, 1))); }
+}
+
+.node.anim-spin { animation: na-spin 1.5s linear infinite; }
+@keyframes na-spin {
+  0%, 100% { transform: scaleX(1); }
+  50%      { transform: scaleX(-1); }
+}
+
+.node.anim-fadein { animation: na-fadein 0.5s ease forwards; opacity: 0; }
+.node.anim-fadein-delayed { opacity: 0; animation: na-fadein 0.5s ease forwards; animation-delay: 1.2s; }
+@keyframes na-fadein { to { opacity: 1; } }
+
+.node.anim-fxburst {
+  opacity: 0; transform: scale(0.5) rotate(0);
+  animation: na-fxburst 1.4s ease-out forwards;
+  animation-delay: 0.7s;
+}
+@keyframes na-fxburst {
+  0%   { opacity: 0; transform: scale(0.5) rotate(0); }
+  30%  { opacity: 1; }
+  100% { opacity: 1; transform: scale(1.3) rotate(360deg); }
+}
+
+.node.anim-cta { animation: na-cta 1.2s ease-in-out infinite; }
+@keyframes na-cta {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+
+/* ── 추가 모션 (등장/퇴장/반복) ─────────────────── */
+
+/* 등장 — slide-in 4방향 */
+.node.anim-slide-in-left   { animation: na-slide-in-left   0.5s cubic-bezier(0.2, 0.9, 0.3, 1) forwards; opacity: 0; }
+.node.anim-slide-in-right  { animation: na-slide-in-right  0.5s cubic-bezier(0.2, 0.9, 0.3, 1) forwards; opacity: 0; }
+.node.anim-slide-in-top    { animation: na-slide-in-top    0.5s cubic-bezier(0.2, 0.9, 0.3, 1) forwards; opacity: 0; }
+.node.anim-slide-in-bottom { animation: na-slide-in-bottom 0.5s cubic-bezier(0.2, 0.9, 0.3, 1) forwards; opacity: 0; }
+@keyframes na-slide-in-left   { from { transform: translateX(-130%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes na-slide-in-right  { from { transform: translateX(130%);  opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes na-slide-in-top    { from { transform: translateY(-130%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes na-slide-in-bottom { from { transform: translateY(130%);  opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* 등장 — zoom-in / zoom-out (둘 다 최종 scale=1, 시작점만 다름) */
+.node.anim-zoom-in  { animation: na-zoom-in  0.45s cubic-bezier(0.2, 1.6, 0.4, 1) forwards; opacity: 0; }
+.node.anim-zoom-out { animation: na-zoom-out 0.45s ease-out forwards; opacity: 0; }
+@keyframes na-zoom-in  { from { transform: scale(0);   opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes na-zoom-out { from { transform: scale(2.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* 등장 — bounce-in (위에서 통통 튕기며) */
+.node.anim-bounce-in { animation: na-bounce-in 0.75s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; opacity: 0; }
+@keyframes na-bounce-in {
+  0%   { transform: translateY(calc(-60% * var(--anim-amp-intro, 1))) scale(0.6); opacity: 0; }
+  50%  { transform: translateY(calc(8% * var(--anim-amp-intro, 1)))   scale(1.06); opacity: 1; }
+  75%  { transform: translateY(calc(-4% * var(--anim-amp-intro, 1)))  scale(0.98); }
+  100% { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+
+/* 퇴장 — fade-out */
+.node.anim-fade-out { animation: na-fade-out 0.5s ease forwards; }
+@keyframes na-fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+/* 퇴장 — slide-out 좌/우 */
+.node.anim-slide-out-left  { animation: na-slide-out-left  0.5s ease-in forwards; }
+.node.anim-slide-out-right { animation: na-slide-out-right 0.5s ease-in forwards; }
+@keyframes na-slide-out-left  { from { transform: translateX(0); opacity: 1; } to { transform: translateX(-130%); opacity: 0; } }
+@keyframes na-slide-out-right { from { transform: translateX(0); opacity: 1; } to { transform: translateX(130%);  opacity: 0; } }
+
+/* 등장 — flash-in (깜빡이며 나타남) — 1 cycle = 1번 깜빡임. 횟수는 animation-iteration-count로 제어 */
+.node.anim-flash-in { opacity: 0; animation: na-flash-in 0.18s ease-in-out forwards; animation-iteration-count: 5; }
+@keyframes na-flash-in {
+  0%, 49%   { opacity: 0; }
+  50%, 100% { opacity: 1; }
+}
+
+/* 퇴장 — flash-out (깜빡이며 사라짐) — 1 cycle = 1번 깜빡임 */
+.node.anim-flash-out { animation: na-flash-out 0.18s ease-in-out forwards; animation-iteration-count: 5; }
+@keyframes na-flash-out {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* 등장 — shake-in (강한 흔들림으로 들어와 안정) */
+.node.anim-shake-in { opacity: 0; animation: na-shake-in 0.9s cubic-bezier(0.2, 0.7, 0.3, 1) forwards; }
+@keyframes na-shake-in {
+  0%   { opacity: 0; transform: translate(0, calc(-10% * var(--anim-amp-intro, 1))) rotate(0); }
+  10%  { opacity: 1; transform: translate(calc(-12% * var(--anim-amp-intro, 1)), calc(4% * var(--anim-amp-intro, 1)))  rotate(calc(-6deg * var(--anim-amp-intro, 1))); }
+  20%  { transform: translate(calc(10% * var(--anim-amp-intro, 1)), calc(-3% * var(--anim-amp-intro, 1)))  rotate(calc(5deg * var(--anim-amp-intro, 1))); }
+  30%  { transform: translate(calc(-9% * var(--anim-amp-intro, 1)), calc(2% * var(--anim-amp-intro, 1)))   rotate(calc(-4deg * var(--anim-amp-intro, 1))); }
+  40%  { transform: translate(calc(7% * var(--anim-amp-intro, 1)), calc(-2% * var(--anim-amp-intro, 1)))   rotate(calc(3deg * var(--anim-amp-intro, 1))); }
+  55%  { transform: translate(calc(-5% * var(--anim-amp-intro, 1)), calc(1% * var(--anim-amp-intro, 1)))   rotate(calc(-2deg * var(--anim-amp-intro, 1))); }
+  70%  { transform: translate(calc(3% * var(--anim-amp-intro, 1)), 0)     rotate(calc(1deg * var(--anim-amp-intro, 1))); }
+  85%  { transform: translate(calc(-1.5% * var(--anim-amp-intro, 1)), 0)  rotate(calc(-0.5deg * var(--anim-amp-intro, 1))); }
+  100% { transform: translate(0, 0)      rotate(0); opacity: 1; }
+}
+
+/* 등장 — slam-in (위에서 쾅 떨어지듯) */
+.node.anim-slam-in { opacity: 0; animation: na-slam-in 0.7s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+@keyframes na-slam-in {
+  0%   { transform: translateY(calc(-150% * var(--anim-amp-intro, 1))) scale(calc(1 + 0.5 * var(--anim-amp-intro, 1))); opacity: 0; }
+  55%  { transform: translateY(0) scale(calc(1 + 0.25 * var(--anim-amp-intro, 1))); opacity: 1; }
+  65%  { transform: translateY(0) scale(0.92); }
+  78%  { transform: translateY(0) scale(1.06); }
+  90%  { transform: translateY(0) scale(0.98); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* 등장 — stamp-in (도장 찍듯 큰 크기에서 빠르게 작아지며) */
+.node.anim-stamp-in { opacity: 0; animation: na-stamp-in 0.55s cubic-bezier(0.34, 1.6, 0.4, 1) forwards; }
+@keyframes na-stamp-in {
+  0%   { transform: scale(calc(2.5 + 0.5 * var(--anim-amp-intro, 1))); opacity: 0; }
+  55%  { transform: scale(0.85); opacity: 1; }
+  72%  { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* 등장 — rubber-in (고무줄처럼 늘어났다가 안착) */
+.node.anim-rubber-in { opacity: 0; animation: na-rubber-in 0.8s ease-out forwards; }
+@keyframes na-rubber-in {
+  0%   { transform: scale3d(0.3, 0.3, 1); opacity: 0; }
+  20%  { transform: scale3d(calc(1 + 0.15 * var(--anim-amp-intro, 1)), calc(1 - 0.15 * var(--anim-amp-intro, 1)), 1); opacity: 1; }
+  40%  { transform: scale3d(calc(1 - 0.1 * var(--anim-amp-intro, 1)), calc(1 + 0.15 * var(--anim-amp-intro, 1)), 1); }
+  60%  { transform: scale3d(1.05, 0.95, 1); }
+  80%  { transform: scale3d(0.97, 1.03, 1); }
+  100% { transform: scale3d(1, 1, 1); opacity: 1; }
+}
+
+/* 등장 — flip-3d-in (3D Y축 뒤집기) */
+.node.anim-flip-3d-in { opacity: 0; animation: na-flip-3d-in 0.7s ease-out forwards; }
+@keyframes na-flip-3d-in {
+  0%   { transform: perspective(600px) rotateY(90deg) scale(0.8); opacity: 0; }
+  40%  { transform: perspective(600px) rotateY(-25deg) scale(1.05); opacity: 1; }
+  60%  { transform: perspective(600px) rotateY(12deg) scale(0.97); }
+  80%  { transform: perspective(600px) rotateY(-5deg) scale(1.02); }
+  100% { transform: perspective(600px) rotateY(0deg) scale(1); opacity: 1; }
+}
+
+/* 등장 — starburst-in (회전+스케일 폭발) */
+.node.anim-starburst-in { opacity: 0; animation: na-starburst-in 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+@keyframes na-starburst-in {
+  0%   { transform: scale(0) rotate(calc(-180deg * var(--anim-amp-intro, 1))); opacity: 0; }
+  60%  { transform: scale(calc(1.1 + 0.1 * var(--anim-amp-intro, 1))) rotate(calc(20deg * var(--anim-amp-intro, 1))); opacity: 1; }
+  80%  { transform: scale(0.95) rotate(calc(-5deg * var(--anim-amp-intro, 1))); }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+/* 등장 — swirl-in (소용돌이로 들어옴) */
+.node.anim-swirl-in { opacity: 0; animation: na-swirl-in 0.8s cubic-bezier(0.34, 1.4, 0.64, 1) forwards; }
+@keyframes na-swirl-in {
+  0%   { transform: scale(0) rotate(calc(540deg * var(--anim-amp-intro, 1))); opacity: 0; }
+  60%  { transform: scale(1.08) rotate(calc(30deg * var(--anim-amp-intro, 1))); opacity: 1; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+/* 등장 — shine-in (빛이 일시적으로 강해지며 등장) */
+.node.anim-shine-in { opacity: 0; animation: na-shine-in 0.7s cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }
+@keyframes na-shine-in {
+  0%   { opacity: 0; filter: brightness(0.2); }
+  35%  { opacity: 1; filter: brightness(2.5); }
+  65%  { filter: brightness(1.5); }
+  100% { opacity: 1; filter: brightness(1); }
+}
+
+/* 등장 — light-sweep-in (좌→우 빛이 쓸고 지나가며 노출 — swipe 효과) */
+.node.anim-light-sweep-in {
+  opacity: 0;
+  -webkit-mask-image: linear-gradient(110deg, transparent 0%, black 40%, black 60%, transparent 100%);
+          mask-image: linear-gradient(110deg, transparent 0%, black 40%, black 60%, transparent 100%);
+  -webkit-mask-size: 250% 100%;
+          mask-size: 250% 100%;
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  animation: na-light-sweep-in 0.9s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+@keyframes na-light-sweep-in {
+  0%   { opacity: 0; -webkit-mask-position: -150% 0; mask-position: -150% 0; filter: brightness(2); }
+  30%  { opacity: 1; filter: brightness(1.7); }
+  99%  { opacity: 1; -webkit-mask-position: 150% 0;  mask-position: 150% 0;  filter: brightness(1); }
+  100% { opacity: 1; -webkit-mask-image: none; mask-image: none; filter: brightness(1); }
+}
+
+/* 등장 — glow-pulse-in (광원이 펄스하며 등장) */
+.node.anim-glow-pulse-in { opacity: 0; animation: na-glow-pulse-in 0.9s ease-out forwards; }
+@keyframes na-glow-pulse-in {
+  0%   { opacity: 0; filter: drop-shadow(0 0 0 #fff) brightness(0.5); }
+  40%  { opacity: 1; filter: drop-shadow(0 0 calc(var(--su) * 6) #fff) brightness(2); }
+  70%  { filter: drop-shadow(0 0 calc(var(--su) * 3) #fff) brightness(1.3); }
+  100% { opacity: 1; filter: drop-shadow(0 0 0 transparent) brightness(1); }
+}
+
+/* 등장 — shimmer-in (반짝이며 등장) */
+.node.anim-shimmer-in { opacity: 0; animation: na-shimmer-in 0.8s ease-out forwards; }
+@keyframes na-shimmer-in {
+  0%   { opacity: 0;   filter: brightness(0.3); }
+  20%  { opacity: 1;   filter: brightness(3); }
+  30%  { filter: brightness(0.5); }
+  40%  { filter: brightness(2.5); }
+  55%  { filter: brightness(0.8); }
+  70%  { filter: brightness(1.8); }
+  100% { opacity: 1;   filter: brightness(1); }
+}
+
+/* 퇴장 — shine-out (빛이 강해졌다가 사라짐) */
+.node.anim-shine-out { animation: na-shine-out 0.7s cubic-bezier(0.4, 0, 0.6, 1) forwards; }
+@keyframes na-shine-out {
+  0%   { opacity: 1; filter: brightness(1); }
+  35%  { opacity: 1; filter: brightness(2.5); }
+  100% { opacity: 0; filter: brightness(0.2); }
+}
+
+/* 퇴장 — light-sweep-out (우→좌 빛이 쓸고 지나가며 사라짐 — swipe 효과) */
+.node.anim-light-sweep-out {
+  -webkit-mask-image: linear-gradient(110deg, transparent 0%, black 40%, black 60%, transparent 100%);
+          mask-image: linear-gradient(110deg, transparent 0%, black 40%, black 60%, transparent 100%);
+  -webkit-mask-size: 250% 100%;
+          mask-size: 250% 100%;
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  animation: na-light-sweep-out 0.9s ease-in forwards;
+}
+@keyframes na-light-sweep-out {
+  0%   { opacity: 1; -webkit-mask-position: 150% 0;  mask-position: 150% 0;  filter: brightness(1); }
+  50%  { filter: brightness(1.8); }
+  100% { opacity: 0; -webkit-mask-position: -150% 0; mask-position: -150% 0; filter: brightness(0.5); }
+}
+
+/* 퇴장 — dissolve-out (빛으로 산화되며 사라짐) */
+.node.anim-dissolve-out { animation: na-dissolve-out 0.8s ease-out forwards; }
+@keyframes na-dissolve-out {
+  0%   { opacity: 1;    filter: brightness(1) blur(0); }
+  40%  { opacity: 0.85; filter: brightness(2.5) blur(calc(var(--su) * 0.5)); }
+  100% { opacity: 0;    filter: brightness(4)   blur(calc(var(--su) * 2)); }
+}
+
+/* 퇴장 — shimmer-out (반짝이며 사라짐) */
+.node.anim-shimmer-out { animation: na-shimmer-out 0.8s ease-out forwards; }
+@keyframes na-shimmer-out {
+  0%   { opacity: 1;   filter: brightness(1); }
+  15%  { opacity: 0.5; filter: brightness(2); }
+  30%  { opacity: 1;   filter: brightness(0.7); }
+  45%  { opacity: 0.4; filter: brightness(2.5); }
+  60%  { opacity: 0.8; filter: brightness(0.5); }
+  100% { opacity: 0;   filter: brightness(1); }
+}
+
+/* 등장 — glow-burst-in (광원 폭발과 함께 등장. 외곽선 stroke와 함께 못 씀) */
+.node.anim-glow-burst-in { opacity: 0; animation: na-glow-burst-in 0.8s cubic-bezier(0.2, 0.9, 0.3, 1) forwards; }
+@keyframes na-glow-burst-in {
+  0%   { transform: scale(0.4); opacity: 0; filter: brightness(3) blur(calc(var(--su) * 3)); }
+  30%  { transform: scale(calc(1.15 + 0.15 * var(--anim-amp-intro, 1))); opacity: 1; filter: brightness(2.5) blur(0); }
+  60%  { transform: scale(0.96); opacity: 1; filter: brightness(1.6) blur(0); }
+  85%  { transform: scale(1.03); filter: brightness(1.2); }
+  100% { transform: scale(1); opacity: 1; filter: brightness(1); }
+}
+
+/* 퇴장 — shake-out (점점 커지는 흔들림으로 부서지듯 사라짐) */
+.node.anim-shake-out { animation: na-shake-out 0.8s cubic-bezier(0.5, 0, 0.8, 0.3) forwards; }
+@keyframes na-shake-out {
+  0%   { transform: translate(0, 0)         rotate(0); opacity: 1; }
+  15%  { transform: translate(calc(-2% * var(--anim-amp-intro, 1)), 0)       rotate(calc(-1deg * var(--anim-amp-intro, 1))); }
+  30%  { transform: translate(calc(4% * var(--anim-amp-intro, 1)), calc(-1% * var(--anim-amp-intro, 1)))      rotate(calc(2deg * var(--anim-amp-intro, 1))); }
+  45%  { transform: translate(calc(-6% * var(--anim-amp-intro, 1)), calc(2% * var(--anim-amp-intro, 1)))      rotate(calc(-3deg * var(--anim-amp-intro, 1))); }
+  60%  { transform: translate(calc(9% * var(--anim-amp-intro, 1)), calc(-3% * var(--anim-amp-intro, 1)))      rotate(calc(4deg * var(--anim-amp-intro, 1))); opacity: 0.85; }
+  75%  { transform: translate(calc(-13% * var(--anim-amp-intro, 1)), calc(5% * var(--anim-amp-intro, 1)))     rotate(calc(-5deg * var(--anim-amp-intro, 1))); opacity: 0.55; }
+  100% { transform: translate(calc(18% * var(--anim-amp-intro, 1)), calc(-8% * var(--anim-amp-intro, 1)))     rotate(calc(7deg * var(--anim-amp-intro, 1))); opacity: 0; }
+}
+
+/* 반복 — pulse (CTA보다 강한 스케일) */
+.node.anim-pulse { animation: na-pulse 1.2s ease-in-out infinite; }
+@keyframes na-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(calc(1 + 0.12 * var(--anim-amp-loop, 1))); }
+}
+
+/* 반복 — flash (깜빡임) */
+.node.anim-flash { animation: na-flash 1.2s ease-in-out infinite; }
+@keyframes na-flash {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75%      { opacity: 0.3; }
+}
+
+/* 반복 — swing (좌우로 살짝 회전) */
+.node.anim-swing { animation: na-swing 1.6s ease-in-out infinite; transform-origin: top center; }
+@keyframes na-swing {
+  0%, 100% { transform: rotate(0); }
+  25%      { transform: rotate(calc(8deg * var(--anim-amp-loop, 1))); }
+  75%      { transform: rotate(calc(-8deg * var(--anim-amp-loop, 1))); }
+}
+
+/* 반복 — rotate (연속 회전, 360°) */
+.node.anim-rotate { animation: na-rotate 2.5s linear infinite; }
+@keyframes na-rotate { to { transform: rotate(360deg); } }
+
+/* 반복 — tada (스케일 + 흔들기, 강조) */
+.node.anim-tada { animation: na-tada 2.4s ease-in-out infinite; }
+@keyframes na-tada {
+  0%, 100%            { transform: scale(1) rotate(0); }
+  10%, 20%            { transform: scale(0.95) rotate(calc(-3deg * var(--anim-amp-loop, 1))); }
+  30%, 50%, 70%, 90%  { transform: scale(calc(1 + 0.1 * var(--anim-amp-loop, 1)))  rotate(calc(3deg * var(--anim-amp-loop, 1))); }
+  40%, 60%, 80%       { transform: scale(calc(1 + 0.1 * var(--anim-amp-loop, 1)))  rotate(calc(-3deg * var(--anim-amp-loop, 1))); }
+}
+
+/* ── 반복 빛 효과 ─────────────────── */
+
+/* 반복 — glow-loop (광채 펄스) */
+.node.anim-glow-loop { animation: na-glow-loop 2s ease-in-out infinite; }
+@keyframes na-glow-loop {
+  0%, 100% { filter: drop-shadow(0 0 0 transparent) brightness(1); }
+  50%      { filter: drop-shadow(0 0 calc(var(--su) * 2 * var(--anim-amp-loop, 1)) #fff) brightness(calc(1 + 0.3 * var(--anim-amp-loop, 1))); }
+}
+
+/* 반복 — shimmer-loop (반짝임 깜빡임) */
+.node.anim-shimmer-loop { animation: na-shimmer-loop 2s ease-in-out infinite; }
+@keyframes na-shimmer-loop {
+  0%, 100% { filter: brightness(1); }
+  25%      { filter: brightness(calc(1 + 0.6 * var(--anim-amp-loop, 1))); }
+  50%      { filter: brightness(calc(1 - 0.1 * var(--anim-amp-loop, 1))); }
+  75%      { filter: brightness(calc(1 + 0.4 * var(--anim-amp-loop, 1))); }
+}
+
+/* 반복 — shine-loop (강한 빛 peak 반복) */
+.node.anim-shine-loop { animation: na-shine-loop 2.5s ease-in-out infinite; }
+@keyframes na-shine-loop {
+  0%, 100% { filter: brightness(1); }
+  40%      { filter: brightness(calc(1 + 1 * var(--anim-amp-loop, 1))); }
+}
+
+/* 반복 — sweep-loop (빛 띠가 element 위를 반복 sweep — ::after overlay) */
+/* .node 가 이미 position: absolute 라 ::after 가 부모 기준으로 그려짐 — position 추가 불필요 */
+.node.anim-sweep-loop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg,
+    transparent 30%,
+    rgba(255, 255, 255, calc(0.55 * var(--anim-amp-loop, 1))) 50%,
+    transparent 70%);
+  background-size: 250% 100%;
+  background-position: -150% 0;
+  animation: na-sweep-loop 3s ease-in-out infinite;
+  mix-blend-mode: screen;
+  border-radius: inherit;
+}
+@keyframes na-sweep-loop {
+  0%        { background-position: -150% 0; }
+  60%, 100% { background-position: 150% 0; }
+}
+
+/* 손가락 탭 인디케이터 */
+.indicator-finger {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--su) * 8);
+  height: calc(var(--su) * 8);
+  margin-left: calc(var(--su) * -4);
+  margin-top: calc(var(--su) * -4);
+  pointer-events: none;
+  z-index: 10;
+  animation: finger-tap 1.4s ease-in-out infinite;
+}
+.indicator-finger::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 35%, #fff 38%, rgba(255,255,255,0) 70%);
+  border-radius: 50%;
+  opacity: 0.85;
+}
+@keyframes finger-tap {
+  0%, 100% { transform: scale(0.95); opacity: 0.7; }
+  50%      { transform: scale(1.1); opacity: 1.0; }
+}
+
+/* 전역 로고 (모든 씬 위) */
+#globalLogo {
+  position: absolute;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  z-index: 30;
+  display: none;
+}
+#globalLogo.visible { display: block; }
+
+/* 코너 CTA 버튼 (상시) */
+#cornerCta {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  padding: 10px 18px;
+  background: linear-gradient(180deg, #ff6b3d, #e6432a);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  z-index: 30;
+  cursor: pointer;
+  display: none;
+}
+#cornerCta.visible { display: inline-flex; align-items: center; }
+
+/* 풀스크린 CTA (마지막) */
+#finalCta {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 40;
+}
+#finalCta.visible { display: flex; }
+#finalCta button {
+  padding: 20px 42px;
+  background: linear-gradient(180deg, #ffd24a, #ff8a1f);
+  color: #1a0d00;
+  font-weight: 900;
+  font-size: 22px;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+  cursor: pointer;
+  animation: na-cta 1.2s ease-in-out infinite;
+}
+
+/* ============================================================
+ *  씬 동적 연출(FX) — PlayableFX (fx.js) 와 함께 동작
+ *  파티클은 .fx-canvas(캔버스), 배경모션은 .fx-css(+자식) 로 렌더.
+ *  --fx-int(강도, 기본1), --fx-color(색상) 변수로 조절.
+ * ============================================================ */
+.fx-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.fx-canvas { position: absolute; inset: 0; pointer-events: none; }
+.fx-css { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+
+/* 회전 광선 */
+.fx-rays::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 220%; height: 220%;
+  transform: translate(-50%, -50%);
+  background: repeating-conic-gradient(from 0deg, transparent 0deg,
+    var(--fx-color, rgba(255,255,255,0.16)) 3deg, transparent 11deg);
+  opacity: calc(0.55 * var(--fx-int, 1));
+  animation: fx-spin 20s linear infinite;
+}
+@keyframes fx-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+/* 방사 펄스 */
+.fx-pulse::before {
+  content: ''; position: absolute; inset: -25%;
+  background: radial-gradient(circle at 50% 52%, var(--fx-color, rgba(255,220,150,0.6)) 0%, transparent 55%);
+  animation: fx-pulse 3.2s ease-in-out infinite;
+}
+@keyframes fx-pulse {
+  0%, 100% { transform: scale(0.85); opacity: calc(0.25 * var(--fx-int, 1)); }
+  50%      { transform: scale(1.12); opacity: calc(0.7 * var(--fx-int, 1)); }
+}
+
+/* 그라데이션 흐름 */
+.fx-gradient::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(60deg, transparent, var(--fx-color, rgba(120,170,255,0.4)),
+    transparent, rgba(255,140,200,0.32), transparent);
+  background-size: 320% 320%;
+  opacity: calc(0.8 * var(--fx-int, 1));
+  animation: fx-grad 9s ease-in-out infinite;
+}
+@keyframes fx-grad { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
+/* 보케 (떠다니는 원) — 자식 span 은 fx.js 가 배치 */
+.fx-bokeh span {
+  position: absolute; border-radius: 50%;
+  background: radial-gradient(circle, var(--fx-color, rgba(255,255,255,0.7)) 0%, transparent 70%);
+  filter: blur(3px);
+  opacity: calc(0.5 * var(--fx-int, 1));
+  transform: translate(-50%, -50%);
+  animation-name: fx-bokeh-float; animation-timing-function: ease-in-out; animation-iteration-count: infinite;
+}
+@keyframes fx-bokeh-float {
+  0%   { transform: translate(-50%, -50%) translateY(7%); }
+  50%  { transform: translate(-50%, -50%) translateY(-7%); }
+  100% { transform: translate(-50%, -50%) translateY(7%); }
+}
+
+/* 빛 쓸기 */
+.fx-sweep::before {
+  content: ''; position: absolute; top: -50%; left: -60%; width: 38%; height: 200%;
+  background: linear-gradient(90deg, transparent, var(--fx-color, rgba(255,255,255,0.5)), transparent);
+  transform: rotate(18deg);
+  opacity: calc(0.85 * var(--fx-int, 1));
+  animation: fx-sweep 4.5s ease-in-out infinite;
+}
+@keyframes fx-sweep { 0% { left: -60%; } 55%, 100% { left: 135%; } }
+
+/* 비네팅 호흡 (가장자리 어둡게) */
+.fx-vignette::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, transparent 42%, var(--fx-color, rgba(0,0,0,0.78)) 125%);
+  animation: fx-vig 4s ease-in-out infinite;
+}
+@keyframes fx-vig {
+  0%, 100% { opacity: calc(0.5 * var(--fx-int, 1)); }
+  50%      { opacity: calc(0.9 * var(--fx-int, 1)); }
+}
+
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="contentBox">
+    <div id="globalLogo"></div>
+  </div>
+  <button id="cornerCta" type="button">PLAY NOW</button>
+  <div id="finalCta"><button type="button">PLAY NOW</button></div>
+</div>
+<script>window.CONFIG = {"meta":{"title":"CC Gacha","cta":{"label":"PLAY NOW","url":"","urlIOS":"","urlAOS":"","labelByLang":{},"urlIOSByLang":{},"urlAOSByLang":{}},"orientation":"portrait","stageRatio":"9:16","showCornerCta":false,"autoEndCtaDelay":0.6,"pokeDelay":1.5,"language":"en","languages":["en","ko"],"logo":{"image":"","imageByLang":{},"position":"top-left","x":4,"y":4,"w":22,"hideOnScenes":[]}},"assets":{"images":{},"audio":{},"fonts":{}},"scenes":[]};</script>
+<script>
+/**
+ * =============================================
+ *  PlayableFX — 씬 동적 연출 (에셋 없이 코드로)
+ *
+ *  파티클(캔버스) + 배경모션(CSS) 효과를 프리셋으로 제공.
+ *  런타임(game.js) / 에디터 미리보기 / 빌드가 공유.
+ *
+ *  사용:
+ *    const handle = PlayableFX.create(container, { type:'confetti', intensity:1, color:'', behind:false });
+ *    handle.destroy();   // 정리 (캔버스 rAF 중단 + DOM 제거)
+ *
+ *  container 는 position 이 잡힌(상대/절대) 요소여야 함. FX 레이어는 그 안을 가득 채움.
+ *  탭/클릭은 항상 통과 (pointer-events:none).
+ * =============================================
+ */
+(function (global) {
+  'use strict';
+
+  // ── 효과 카탈로그 (에디터 셀렉트용) ─────────────────────
+  // group: 'particle' | 'bg'.  color:true 면 색상 옵션이 의미있음.  behind: 기본 레이어 위치.
+  const TYPES = [
+    { id: 'none',     label: '없음',                 group: 'none' },
+    // 파티클 (캔버스)
+    { id: 'confetti', label: '🎉 색종이',            group: 'particle', color: false, behind: false },
+    { id: 'snow',     label: '❄️ 눈',                group: 'particle', color: true,  behind: false },
+    { id: 'sparkle',  label: '✨ 반짝이',            group: 'particle', color: true,  behind: false },
+    { id: 'embers',   label: '🔥 불씨 (상승)',        group: 'particle', color: true,  behind: false },
+    { id: 'petals',   label: '🌸 꽃잎',              group: 'particle', color: true,  behind: false },
+    { id: 'bubbles',  label: '🫧 비눗방울',          group: 'particle', color: true,  behind: false },
+    { id: 'stars',    label: '⭐ 별 솟구침',          group: 'particle', color: true,  behind: false },
+    { id: 'rain',     label: '🌧️ 비',               group: 'particle', color: true,  behind: false },
+    { id: 'dust',     label: '🌫️ 먼지/입자',         group: 'particle', color: true,  behind: true  },
+    { id: 'fireflies',label: '🐝 반딧불',            group: 'particle', color: true,  behind: true  },
+    // 배경 모션 (CSS)
+    { id: 'rays',     label: '🌟 회전 광선',          group: 'bg', color: true,  behind: true },
+    { id: 'pulse',    label: '💗 방사 펄스',          group: 'bg', color: true,  behind: true },
+    { id: 'gradient', label: '🌈 그라데이션 흐름',     group: 'bg', color: true,  behind: true },
+    { id: 'bokeh',    label: '🔵 보케 (떠다님)',       group: 'bg', color: true,  behind: true },
+    { id: 'sweep',    label: '📿 빛 쓸기',            group: 'bg', color: true,  behind: false },
+    { id: 'vignette', label: '🌑 비네팅 호흡',         group: 'bg', color: true,  behind: true },
+  ];
+  const TYPE_MAP = {};
+  TYPES.forEach((t) => (TYPE_MAP[t.id] = t));
+
+  const CSS_TYPES = { rays:1, pulse:1, gradient:1, bokeh:1, sweep:1, vignette:1 };
+
+  // ── 파티클 프리셋 ───────────────────────────────────────
+  // 좌표/크기는 컨테이너 CSS 픽셀 기준. size 는 짧은 변(minWH) 의 비율(%) 로 환산.
+  // gy: 중력(+아래), vy: 초기 세로속도 범위, vx: 가로 드리프트 범위 (모두 minWH 대비 비율/프레임).
+  const P = {
+    confetti: { shape:'rect',   count:70, sizePct:[1.1,2.2], gy:0.012,  vy:[0.15,0.5], vx:[-0.25,0.25], spin:true,  sway:0.3, fade:'none', edge:'top',    palette:['#ff5c5c','#ffd24a','#4ad2ff','#5cff8f','#c98bff','#ff8fbf'] },
+    snow:     { shape:'circle', count:80, sizePct:[0.5,1.5], gy:0.004,  vy:[0.1,0.35], vx:[-0.1,0.1],  spin:false, sway:0.7, fade:'none', edge:'top',    palette:['#ffffff','#eaf4ff'] },
+    sparkle:  { shape:'spark',  count:46, sizePct:[0.7,1.8], gy:0,      vy:[-0.04,0.04],vx:[-0.04,0.04],spin:false, sway:0,   fade:'inout',edge:'all',    palette:['#fff4b0','#ffe27a','#ffffff'] },
+    embers:   { shape:'circle', count:48, sizePct:[0.5,1.4], gy:-0.006, vy:[-0.45,-0.18],vx:[-0.12,0.12],spin:false,sway:0.5, fade:'out',  edge:'bottom', glow:true, palette:['#ffb24a','#ff7a3d','#ffd07a'] },
+    petals:   { shape:'petal',  count:42, sizePct:[1.2,2.4], gy:0.006,  vy:[0.1,0.3],  vx:[-0.2,0.2],  spin:true,  sway:0.9, fade:'none', edge:'top',    palette:['#ffb6d5','#ff8fbf','#ffd0e2'] },
+    bubbles:  { shape:'ring',   count:34, sizePct:[1.2,3.2], gy:-0.004, vy:[-0.35,-0.12],vx:[-0.1,0.1], spin:false, sway:0.8, fade:'out',  edge:'bottom', palette:['rgba(200,235,255,0.85)'] },
+    stars:    { shape:'star',   count:34, sizePct:[1.2,2.6], gy:-0.008, vy:[-0.5,-0.22],vx:[-0.15,0.15],spin:true,  sway:0.3, fade:'out',  edge:'bottom', glow:true, palette:['#ffd24a','#fff0a0','#ffffff'] },
+    rain:     { shape:'line',   count:90, sizePct:[2.5,5.0], gy:0.05,   vy:[0.9,1.5],  vx:[-0.05,0.05],spin:false, sway:0,   fade:'none', edge:'top',    palette:['rgba(180,205,255,0.55)'] },
+    dust:     { shape:'circle', count:55, sizePct:[0.3,0.9], gy:0,      vy:[-0.05,0.05],vx:[-0.06,0.06],spin:false, sway:0.4, fade:'inout',edge:'all',    palette:['rgba(255,255,255,0.5)','rgba(255,240,200,0.45)'] },
+    fireflies:{ shape:'circle', count:30, sizePct:[0.6,1.3], gy:0,      vy:[-0.08,0.08],vx:[-0.08,0.08],spin:false, sway:0.6, fade:'inout',edge:'all',    glow:true, palette:['#bfff7a','#eaff9a','#ffe27a'] },
+  };
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = (arr) => arr[(Math.random() * arr.length) | 0];
+
+  function startParticles(container, cfg) {
+    const preset = P[cfg.type];
+    const canvas = document.createElement('canvas');
+    canvas.className = 'fx-canvas';
+    canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;';
+    container.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    const intensity = clampNum(cfg.intensity, 0.2, 3, 1);
+    const sizeScale = clampNum(cfg.size, 0.2, 5, 1);
+    // 개수: 명시값(count) 우선, 없으면 프리셋 기본 × 강도(레거시 호환)
+    const count = (cfg.count != null)
+      ? Math.round(clampNum(cfg.count, 1, 600, preset.count))
+      : Math.max(1, Math.round(preset.count * intensity));
+    const baseColor = (cfg.color || '').trim();
+    let W = 0, H = 0, dpr = 1, minWH = 1;
+    let parts = [];
+    let raf = 0, alive = true;
+
+    function resize() {
+      const r = container.getBoundingClientRect();
+      const cw = Math.max(1, Math.round(r.width));
+      const ch = Math.max(1, Math.round(r.height));
+      const d = Math.min(global.devicePixelRatio || 1, 2);
+      if (cw === W && ch === H && d === dpr) return false;
+      W = cw; H = ch; dpr = d; minWH = Math.min(W, H);
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return true;
+    }
+
+    function spawn(p, initial) {
+      const sz = rand(preset.sizePct[0], preset.sizePct[1]) / 100 * minWH * sizeScale;
+      p.size = Math.max(1, sz);
+      p.vx = rand(preset.vx[0], preset.vx[1]) / 100 * minWH;
+      p.vy = rand(preset.vy[0], preset.vy[1]) / 100 * minWH;
+      p.rot = rand(0, Math.PI * 2);
+      p.vrot = preset.spin ? rand(-0.18, 0.18) : 0;
+      p.swPhase = rand(0, Math.PI * 2);
+      p.swSpeed = rand(0.01, 0.04);
+      p.swAmp = (preset.sway || 0) / 100 * minWH * rand(8, 16);
+      p.color = baseColor || pick(preset.palette);
+      p.maxLife = rand(90, 220);
+      p.life = preset.fade === 'inout' && initial ? rand(0, p.maxLife) : 0;
+      // 진입 위치
+      const edge = preset.edge;
+      if (edge === 'top')        { p.x = rand(0, W); p.y = initial ? rand(-H, H) : rand(-H * 0.15, -2); }
+      else if (edge === 'bottom'){ p.x = rand(0, W); p.y = initial ? rand(0, H) : H + rand(2, H * 0.15); }
+      else                       { p.x = rand(0, W); p.y = rand(0, H); }
+    }
+
+    function respawnIfDone(p) {
+      const off = p.size * 2;
+      const dead = (preset.fade !== 'none' && p.life >= p.maxLife);
+      const out = p.y > H + off || p.y < -off - H * 0.2 || p.x < -off - W * 0.2 || p.x > W + off + W * 0.2;
+      if (dead || out) spawn(p, false);
+    }
+
+    function alpha(p) {
+      if (preset.fade === 'none') return 1;
+      const t = p.life / p.maxLife;
+      if (preset.fade === 'out')  return Math.max(0, 1 - t);
+      // inout (twinkle)
+      return Math.sin(Math.min(1, t) * Math.PI);
+    }
+
+    function draw(p) {
+      const a = alpha(p);
+      if (a <= 0.01) return;
+      const dx = p.x + (preset.sway ? Math.sin(p.life * p.swSpeed + p.swPhase) * p.swAmp : 0);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.strokeStyle = p.color;
+      if (preset.glow) { ctx.shadowColor = p.color; ctx.shadowBlur = p.size * 2.2; } else ctx.shadowBlur = 0;
+      const s = p.size;
+      if (preset.shape === 'rect') {
+        ctx.save(); ctx.translate(dx, p.y); ctx.rotate(p.rot);
+        ctx.fillRect(-s * 0.6, -s, s * 1.2, s * 2);
+        ctx.restore();
+      } else if (preset.shape === 'line') {
+        ctx.lineWidth = Math.max(1, s * 0.18);
+        ctx.beginPath(); ctx.moveTo(dx, p.y); ctx.lineTo(dx + p.vx * 1.5, p.y + s * 2.2); ctx.stroke();
+      } else if (preset.shape === 'ring') {
+        ctx.lineWidth = Math.max(1, s * 0.18);
+        ctx.beginPath(); ctx.arc(dx, p.y, s, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = a * 0.4; ctx.beginPath(); ctx.arc(dx - s * 0.3, p.y - s * 0.3, s * 0.25, 0, Math.PI * 2); ctx.fill();
+      } else if (preset.shape === 'star' || preset.shape === 'spark') {
+        drawStar(ctx, dx, p.y, p.rot, s, preset.shape === 'spark' ? 4 : 5);
+      } else if (preset.shape === 'petal') {
+        ctx.save(); ctx.translate(dx, p.y); ctx.rotate(p.rot);
+        ctx.beginPath(); ctx.ellipse(0, 0, s * 0.55, s, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      } else { // circle
+        ctx.beginPath(); ctx.arc(dx, p.y, s, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    function frame() {
+      if (!alive) return;
+      if (!canvas.isConnected) { alive = false; return; }   // DOM 에서 제거되면 자동 종료
+      resize();
+      ctx.clearRect(0, 0, W, H);
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        p.vy += preset.gy / 100 * minWH;
+        p.x += p.vx; p.y += p.vy; p.rot += p.vrot; p.life++;
+        respawnIfDone(p);
+        draw(p);
+      }
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+      raf = global.requestAnimationFrame(frame);
+    }
+
+    resize();
+    parts = new Array(count).fill(0).map(() => { const p = {}; spawn(p, true); return p; });
+    raf = global.requestAnimationFrame(frame);
+
+    return {
+      destroy() { alive = false; if (raf) global.cancelAnimationFrame(raf); if (canvas.parentNode) canvas.remove(); },
+    };
+  }
+
+  function drawStar(ctx, cx, cy, rot, r, points) {
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const rad = (i % 2 === 0) ? r : r * 0.42;
+      const a = (Math.PI / points) * i;
+      ctx[i === 0 ? 'moveTo' : 'lineTo'](Math.cos(a) * rad, Math.sin(a) * rad);
+    }
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+
+  function startCss(container, cfg) {
+    const el = document.createElement('div');
+    el.className = 'fx-css fx-' + cfg.type;
+    el.style.pointerEvents = 'none';
+    const intensity = clampNum(cfg.intensity, 0.2, 3, 1);
+    el.style.setProperty('--fx-int', String(intensity));
+    if (cfg.color) el.style.setProperty('--fx-color', cfg.color);
+    // bokeh 는 떠다니는 자식 원들을 JS 로 배치 (애니메이션은 CSS)
+    if (cfg.type === 'bokeh') {
+      const sizeScale = clampNum(cfg.size, 0.2, 5, 1);
+      const n = (cfg.count != null) ? Math.round(clampNum(cfg.count, 1, 60, 7)) : Math.round(7 * intensity);
+      for (let i = 0; i < n; i++) {
+        const b = document.createElement('span');
+        const sz = rand(8, 26) * sizeScale;
+        b.style.cssText =
+          `left:${rand(0, 100)}%;top:${rand(0, 100)}%;width:${sz}%;height:${sz}%;` +
+          `animation-duration:${rand(7, 16).toFixed(1)}s;animation-delay:${(-rand(0, 10)).toFixed(1)}s;`;
+        el.appendChild(b);
+      }
+    }
+    container.appendChild(el);
+    return { destroy() { if (el.parentNode) el.remove(); } };
+  }
+
+  function clampNum(v, lo, hi, dflt) {
+    v = parseFloat(v);
+    if (isNaN(v)) return dflt;
+    return Math.max(lo, Math.min(hi, v));
+  }
+
+  function create(container, fx) {
+    if (!fx || !fx.type || fx.type === 'none') return null;
+    if (!P[fx.type] && !CSS_TYPES[fx.type]) return null;
+    try {
+      return CSS_TYPES[fx.type] ? startCss(container, fx) : startParticles(container, fx);
+    } catch (e) {
+      if (global.console) console.warn('PlayableFX error:', e);
+      return null;
+    }
+  }
+
+  // 기본 behind 위치를 타입에서 조회 (지정 안됐을 때 사용)
+  function defaultBehind(type) { return !!(TYPE_MAP[type] && TYPE_MAP[type].behind); }
+
+  // 개수/크기 조절이 의미있는 효과 (파티클 전부 + 보케)
+  const PRESET_COUNT = {}; Object.keys(P).forEach((k) => { PRESET_COUNT[k] = P[k].count; });
+  PRESET_COUNT.bokeh = 7;
+  function countable(type) { const m = TYPE_MAP[type]; return !!(m && (m.group === 'particle' || type === 'bokeh')); }
+  function defaultCount(type) { return PRESET_COUNT[type] || 40; }
+  function maxCount(type) { return type === 'bokeh' ? 60 : 300; }
+
+  global.PlayableFX = { create, TYPES, TYPE_MAP, defaultBehind, isCss: (t) => !!CSS_TYPES[t], countable, defaultCount, maxCount };
+})(typeof window !== 'undefined' ? window : this);
+
+</script>
+<script>
+/**
+ * =============================================
+ *  PLAYABLE AD RUNTIME — Image Gacha (Free Node)
+ *
+ *  씬 = background + nodes[] (자유 배치).
+ *  좌표/크기 모두 % (rect.x/y/w/h). 폰트사이즈는 stage 짧은 변의 %.
+ *  애니메이션은 CSS class(anim-*) 로 부여.
+ * =============================================
+ */
+
+(function () {
+  'use strict';
+
+  const cfg = (typeof window !== 'undefined' && window.CONFIG) || (typeof CONFIG !== 'undefined' && CONFIG);
+  if (!cfg) { console.error('CONFIG not loaded'); return; }
+
+  const stage      = document.getElementById('stage');
+  const contentBox = document.getElementById('contentBox');
+  const cornerCta  = document.getElementById('cornerCta');
+  const finalCta   = document.getElementById('finalCta');
+  const globalLogo = document.getElementById('globalLogo');
+
+  const state = {
+    sceneById: new Map(),
+    currentSceneId: null,
+    currentLayer: null,
+    currentBgLayer: null,
+    bgmAudio: null,
+    sceneTimer: null,
+    sfxTimers: [],
+    ended: false,
+  };
+
+  const imgKey = (k) => (k && cfg.assets?.images?.[k]) || k || '';
+  const audKey = (k) => (k && cfg.assets?.audio?.[k]) || k || '';
+
+  // ── 언어 결정 ─────────────────────────────
+  // 우선순위: ?lang= URL 쿼리 > meta.language > baseLang
+  // GLOBAL(base)=baseLang(기본 en). override 없는 언어는 base 값을 그대로 사용.
+  function getLang() {
+    const baseLang = cfg.meta?.baseLang || 'en';
+    const allow = [baseLang, ...((cfg.meta?.languages) || [])];
+    try {
+      const q = new URLSearchParams(location.search).get('lang');
+      if (q && allow.includes(q)) return q;
+    } catch (_) {}
+    return cfg.meta?.language || baseLang;
+  }
+  const CURRENT_LANG = getLang();
+  // ── 반응형 비율(레이아웃) ────────────────────────────────
+  // 프로젝트가 정의한 비율(9:16, 16:9 …) 중 현재 뷰포트 방향에 가장 맞는 것을 고른다.
+  // 부팅 시 + resize/회전 시 갱신 → 세로 기기는 세로 레이아웃, 가로 기기는 가로 레이아웃 자동 적용.
+  // rectByRatio/fontByRatio/hideInRatio 해석에 쓰이며(closure 로 최신값 참조), let 이라 런타임에 바뀐다.
+  function availableRatios() {
+    // base 비율(n.rect 가 기준하는 비율) = meta.baseRatio, 없으면 세로 9:16 기본.
+    // (stageRatio 는 "마지막 편집 비율"일 뿐이라 base 로 쓰면 안 됨 — 그러면 세로가 목록에서 빠져 전환 불가)
+    const set = new Set([cfg.meta?.baseRatio || '9:16']);
+    const scan = (nodes) => (nodes || []).forEach((n) => {
+      if (n.rectByRatio) Object.keys(n.rectByRatio).forEach((r) => set.add(r));
+      if (n.rectByRatioLang) Object.keys(n.rectByRatioLang).forEach((r) => set.add(r));
+      if (n.fontByRatio) Object.keys(n.fontByRatio).forEach((r) => set.add(r));
+      if (Array.isArray(n.hideInRatio)) n.hideInRatio.forEach((r) => set.add(r));
+    });
+    scan(cfg.master && cfg.master.nodes);
+    (cfg.scenes || []).forEach((s) => scan(s.nodes));
+    return [...set];
+  }
+  function pickRatio() {
+    const ratios = availableRatios();
+    if (ratios.length <= 1) return ratios[0] || (cfg.meta?.stageRatio || '9:16');
+    const vw = (typeof window !== 'undefined' && window.innerWidth) || 1;
+    const vh = (typeof window !== 'undefined' && window.innerHeight) || 1;
+    const vAspect = vw / vh;
+    let best = ratios[0], bestDiff = Infinity;
+    for (const r of ratios) {
+      const a = parseRatio(r); if (!a) continue;
+      const d = Math.abs(Math.log(a) - Math.log(vAspect));   // 비율 로그거리(가로/세로 대칭 비교)
+      if (d < bestDiff) { bestDiff = d; best = r; }
+    }
+    return best;
+  }
+  let CURRENT_RATIO = pickRatio();
+
+  // 배경 채우기 모드: 'off'(레터박스) | 'cover'(비율 유지·크롭) | 'stretch'(늘려서 채움).
+  // off 가 아니면 배경을 스테이지 전체에 깔아 위아래 블랙(레터박스)을 없앤다. 콘텐츠는 안전영역 유지.
+  const BG_FILL = cfg.meta?.bgFill || 'off';
+  // 배경 채우기 모드면:
+  //  (1) contentBox 를 투명하게 → 안전영역까지 풀스테이지 배경이 이음새 없이 비침
+  //  (2) 클리핑을 contentBox → stage(뷰포트)로 이동 → 목표비율보다 넓은 화면에서도 풀블리드(하단 바 등)가
+  //      화면 끝까지 늘어남. (기존엔 contentBox 경계에서 잘려, 16:9보다 넓은 창에선 안쪽에서 잘림)
+  //  레터박스(off) 모드는 종전대로 contentBox 에서 클립 → 검은 여백으로 새지 않음.
+  if (BG_FILL !== 'off' && contentBox) {
+    contentBox.style.background = 'transparent';
+    contentBox.style.overflow = 'visible';
+    if (stage) stage.style.overflow = 'hidden';
+  }
+
+  // 씬마다 "풀스테이지 배경 레이어"를 하나 만든다. 콘텐츠 레이어(.sceneLayer, contentBox 안)와
+  // 같은 트랜지션으로 함께 들어오고 나가서, 이전 씬 배경/콘텐츠를 가려 잔상을 없앤다.
+  // stage 전체(레터박스 포함)를 덮으므로 위아래 블랙도 채운다. 배경 이미지가 없으면 검정.
+  function makeBgLayer(key) {
+    const el = document.createElement('div');
+    el.className = 'sceneLayer stageBgLayer';   // .sceneLayer = position:absolute; inset:0 → 풀스테이지 + scn-* 트랜지션 공유
+    el.style.background = '#000';
+    const src = key ? imgKey(key) : '';
+    if (src) {
+      el.style.backgroundImage = `url("${src}")`;
+      el.style.backgroundPosition = 'center';
+      el.style.backgroundRepeat = 'no-repeat';
+      el.style.backgroundSize = (BG_FILL === 'stretch') ? '100% 100%' : 'cover';
+    }
+    return el;
+  }
+
+  // 노드/필드 별 언어 override 해석.
+  // n.text + n.textByLang[lang] → 언어 값. override가 있으면 그것, 없으면 base 사용.
+  function pickLang(base, byLang) {
+    if (byLang && typeof byLang === 'object') {
+      const v = byLang[CURRENT_LANG];
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+    return base;
+  }
+  function resolveText(n)  { return pickLang(n.text  || '', n.textByLang); }
+  function resolveImage(n) { return pickLang(n.image || '', n.imageByLang); }
+  function resolveLabel(n) { return pickLang(n.label || '', n.labelByLang); }
+  // 위치/크기 해석. 비율(레이아웃) × 언어 조합까지 지원.
+  //  비-base 비율: rectByRatioLang[비율][언어](조합) > rectByRatio[비율](비율기본) > rect
+  //  base 비율:    rectByLang[언어] > rect   (base 비율의 언어 위치는 rectByLang 에 저장)
+  const BASE_RATIO = cfg.meta?.baseRatio || '9:16';
+  // 노드별 공통 플래그: uniformLang = 언어 override 무시, uniformRatio = 비율 override 무시 (해당 축은 공통 값)
+  function resolveRect(n)  {
+    const R = CURRENT_RATIO, L = CURRENT_LANG;
+    const langOn = !n.uniformLang, ratioOn = !n.uniformRatio;
+    if (ratioOn && R !== BASE_RATIO) {
+      if (langOn && n.rectByRatioLang && n.rectByRatioLang[R] && n.rectByRatioLang[R][L]) return n.rectByRatioLang[R][L];
+      if (n.rectByRatio && n.rectByRatio[R]) return n.rectByRatio[R];
+    }
+    if (langOn && n.rectByLang && n.rectByLang[L]) return n.rectByLang[L];
+    return n.rect || { x: 10, y: 10, w: 30, h: 20 };
+  }
+  // 언어별 표시/숨김: hideInLang 에 현재 언어가 있으면 숨김
+  function nodeHiddenLang(n) { return Array.isArray(n.hideInLang) && n.hideInLang.indexOf(CURRENT_LANG) !== -1; }
+  // 비율별 표시/숨김: hideInRatio 에 현재 비율이 있으면 숨김 (가로 전용 노드를 세로에서 숨기는 등)
+  function nodeHiddenRatio(n) { return Array.isArray(n.hideInRatio) && n.hideInRatio.indexOf(CURRENT_RATIO) !== -1; }
+  // 비율별 폰트 크기(--su 배수): fontByRatio[현재비율] 이 있으면 그걸, 없으면 기본 fontSize(기본 4).
+  function resolveFont(n) {
+    if (!n.uniformRatio && n.fontByRatio && n.fontByRatio[CURRENT_RATIO] != null) return n.fontByRatio[CURRENT_RATIO];
+    return n.fontSize != null ? n.fontSize : 4;
+  }
+  // 비율×언어별 스칼라(회전°=rotate, 기울기=slant 등). rect 와 동일 우선순위.
+  //  비-base 비율: <key>ByRatioLang[R][L] > <key>ByRatio[R] > n[key]
+  //  base 비율:    <key>ByLang[L] > n[key]   (0 이 유효값이라 != null 로 판정)
+  function resolveScalar(n, key) {
+    const R = CURRENT_RATIO, L = CURRENT_LANG;
+    const langOn = !n.uniformLang, ratioOn = !n.uniformRatio;
+    if (ratioOn && R !== BASE_RATIO) {
+      const rl = n[key + 'ByRatioLang'];
+      if (langOn && rl && rl[R] && rl[R][L] != null) return rl[R][L];
+      const rr = n[key + 'ByRatio'];
+      if (rr && rr[R] != null) return rr[R];
+    }
+    const bl = n[key + 'ByLang'];
+    if (langOn && bl && bl[L] != null) return bl[L];
+    return n[key];
+  }
+
+  // ── 폰트 자산 자동 등록 ────────────────────
+  const fontsRegistered = new Set();
+  function registerFonts() {
+    const fonts = cfg.assets?.fonts || {};
+    let style = document.getElementById('__playable_fonts__');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = '__playable_fonts__';
+      document.head.appendChild(style);
+    }
+    let css = '';
+    for (const [key, src] of Object.entries(fonts)) {
+      if (!src) continue;
+      if (fontsRegistered.has(key)) continue;
+      const fmt = src.includes('font/woff2') ? 'woff2'
+                : src.includes('font/woff')  ? 'woff'
+                : src.includes('font/otf') || src.includes('opentype') ? 'opentype'
+                : 'truetype';
+      css += `@font-face { font-family: '${key.replace(/'/g, "\\'")}'; src: url('${src}') format('${fmt}'); font-display: block; }\n`;
+      fontsRegistered.add(key);
+    }
+    if (css) style.textContent += css;
+  }
+  registerFonts();
+
+  (cfg.scenes || []).forEach((s) => state.sceneById.set(s.id, s));
+
+  // ── UI 텍스트/이벤트 ────────────────────
+  const ctaLabelResolved = pickLang(cfg.meta?.cta?.label || '', cfg.meta?.cta?.labelByLang);
+  if (ctaLabelResolved) {
+    cornerCta.textContent = ctaLabelResolved;
+    finalCta.querySelector('button').textContent = ctaLabelResolved;
+  }
+  if (cfg.meta?.showCornerCta) cornerCta.classList.add('visible');
+  cornerCta.addEventListener('click', openCta);
+  finalCta.querySelector('button').addEventListener('click', openCta);
+
+  // OS 감지: iPad/iPhone/iPod = iOS, 그 외(안드/데스크톱) = AOS
+  // iPadOS 13+은 데스크톱 UA를 반환하므로 maxTouchPoints도 함께 체크
+  const IS_IOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+                 (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  function openCta() {
+    const cta = cfg.meta?.cta || {};
+    const osKey       = IS_IOS ? 'urlIOS'       : 'urlAOS';
+    const osByLangKey = IS_IOS ? 'urlIOSByLang' : 'urlAOSByLang';
+    const url = pickLang(cta[osKey], cta[osByLangKey]) || cta.url || '';
+    // 유니버설 클릭아웃: 광고 컨테이너가 주입한 매체 API 를 우선 사용해야 설치 트래킹·리뷰 통과.
+    // (typeof 로 참조하면 미정의 전역도 ReferenceError 없이 안전) — 없으면 브라우저 폴백(프리뷰용).
+    try {
+      // MRAID 계열: AppLovin · ironSource/LevelPlay · Unity · Vungle/Liftoff · Mintegral 등
+      if (typeof mraid !== 'undefined' && mraid && typeof mraid.open === 'function') { mraid.open(url); return; }
+      // Meta (Facebook/Instagram) — 목적지는 Meta가 지정, URL 불필요
+      if (typeof FbPlayableAd !== 'undefined' && FbPlayableAd && typeof FbPlayableAd.onCTAClick === 'function') { FbPlayableAd.onCTAClick(); return; }
+      // Google Ads (GWD/Google Ads HTML5)
+      if (typeof ExitApi !== 'undefined' && ExitApi && typeof ExitApi.exit === 'function') { ExitApi.exit(url); return; }
+    } catch (e) {}
+    if (url) { try { window.open(url, '_blank'); } catch (e) { try { top.location.href = url; } catch (_) { location.href = url; } } }
+  }
+
+  // ── stage 비율 + --su CSS 변수 ───────────
+  function parseRatio(r) {
+    if (!r || r === 'auto') return null;
+    const m = String(r).match(/^(\d+)\s*[:\/]\s*(\d+)$/);
+    return m ? Number(m[1]) / Number(m[2]) : null;
+  }
+  function layoutContentBox() {
+    const vw = stage.clientWidth;
+    const vh = stage.clientHeight;
+    const ar = parseRatio(CURRENT_RATIO) ?? (vw / vh);
+    let w, h;
+    if (vw / vh > ar) { h = vh; w = vh * ar; }
+    else              { w = vw; h = vw / ar; }
+    contentBox.style.width  = w + 'px';
+    contentBox.style.height = h + 'px';
+    contentBox.style.left   = ((vw - w) / 2) + 'px';
+    contentBox.style.top    = ((vh - h) / 2) + 'px';
+    // 1su = min(w,h) 의 1% (vmin in stage)
+    const su = Math.min(w, h) / 100;
+    contentBox.style.setProperty('--su', su + 'px');
+  }
+  // 뷰포트 변화(리사이즈/회전) → 방향에 맞는 비율 재선택. 비율이 바뀌면 현재 씬을 그 레이아웃으로 다시 그린다.
+  function onViewportChange() {
+    const next = pickRatio();
+    if (next !== CURRENT_RATIO) {
+      CURRENT_RATIO = next;
+      layoutContentBox();
+      relayoutCurrentScene();
+    } else {
+      layoutContentBox();
+    }
+  }
+  function relayoutCurrentScene() {
+    if (!state.currentSceneId) return;
+    const sc = state.sceneById.get(state.currentSceneId);
+    if (sc) enterScene(sc, { relayout: true });   // 사운드/타이머/트랜지션 없이 현재 비율로 노드만 다시 배치
+  }
+  window.addEventListener('resize', onViewportChange);
+  window.addEventListener('orientationchange', onViewportChange);
+
+  // ── 사운드 ────────────────────────────
+  function playBgm(key, loop = true) {
+    const src = audKey(key);
+    if (!src) return;
+    if (state.bgmAudio && state.bgmAudio._key === key && state.bgmAudio.loop === loop) return;
+    stopBgm();
+    const a = new Audio(src);
+    a.loop = !!loop; a.volume = 0.5; a._key = key;
+    a.play().catch(() => {
+      const resume = () => { a.play(); document.removeEventListener('pointerdown', resume); };
+      document.addEventListener('pointerdown', resume, { once: true });
+    });
+    state.bgmAudio = a;
+  }
+  function stopBgm() {
+    if (state.bgmAudio) { try { state.bgmAudio.pause(); } catch (_) {} state.bgmAudio = null; }
+  }
+  function playSfx(key, volume) {
+    const src = audKey(key); if (!src) return;
+    const a = new Audio(src);
+    a.volume = (typeof volume === 'number') ? Math.max(0, Math.min(1, volume)) : 0.9;
+    a.play().catch(() => {});
+  }
+
+  // ── 액션 실행 ─────────────────────────
+  // scene.nextRandom[] 가 있으면 그 중 균등 확률로 하나, 없으면 scene.next 반환
+  function resolveNext(sc) {
+    if (sc && Array.isArray(sc.nextRandom)) {
+      const arr = sc.nextRandom.filter(Boolean);
+      if (arr.length) return arr[Math.floor(Math.random() * arr.length)];
+    }
+    return sc?.next || null;
+  }
+
+  function runAction(action) {
+    if (!action) return;
+    const t = action.type;
+    if (t === 'next') {
+      const sc = state.sceneById.get(state.currentSceneId);
+      const nxt = resolveNext(sc);
+      if (nxt) gotoSceneId(nxt); else endPlayable();
+    } else if (t === 'goto') {
+      gotoSceneId(action.target);
+    } else if (t === 'random') {
+      const arr = (action.targets || []).filter(Boolean);
+      if (!arr.length) { endPlayable(); return; }
+      const pick = arr[Math.floor(Math.random() * arr.length)];
+      gotoSceneId(pick);
+    } else if (t === 'cta') {
+      openCta();
+    } else if (t === 'end') {
+      endPlayable();
+    }
+  }
+
+  // ── 씬 전환 ───────────────────────────
+  function gotoSceneId(id) {
+    if (!id) { endPlayable(); return; }
+    const scene = state.sceneById.get(id);
+    if (!scene) { console.warn('scene not found:', id); endPlayable(); return; }
+    enterScene(scene);
+  }
+
+  function enterScene(scene, opts) {
+    const relayout = !!(opts && opts.relayout);   // 비율 재적용: 사운드/타이머/트랜지션 없이 노드만 다시 배치
+    if (!relayout) clearSceneTimer();
+
+    const prev   = state.currentLayer;
+    const prevBg = state.currentBgLayer;
+    state.currentSceneId = scene.id;
+
+    const master = cfg.master || { nodes: [] };
+    const useMaster = !scene.hideMaster;
+
+    const layer = document.createElement('div');
+    layer.className = 'sceneLayer';
+    layer.dataset.sceneId = scene.id;
+
+    // 배경 채우기 모드면 씬 배경을 풀스테이지 배경 레이어로 만들어 콘텐츠와 함께 전환(잔상 방지 + 레터박스 채움).
+    // 씬 배경 우선, 없으면 마스터 배경.
+    let bgLayer = null;
+    if (BG_FILL !== 'off') {
+      const bgKey = scene.background || (useMaster ? pickLang(master.background, master.backgroundByLang) : '');
+      bgLayer = makeBgLayer(bgKey);
+    }
+
+    // 새 레이어 DOM 배치: 배경은 contentBox 뒤(stage), 콘텐츠는 contentBox 안.
+    if (bgLayer) stage.insertBefore(bgLayer, contentBox);
+    contentBox.appendChild(layer);
+
+    // scene.transition: { kind, duration }. kind 가 none 또는 미설정 시 즉시 전환.
+    // 콘텐츠 레이어와 배경 레이어를 "같은" 트랜지션으로 함께 넣고/빼서 이전 씬 잔상을 없앤다.
+    // relayout(회전/리사이즈 재적용)이면 트랜지션 없이 즉시 교체 — 방향 바꿀 때마다 등장 애니메이션 재생 방지.
+    const tr = relayout ? null : scene.transition;
+    if (tr && tr.kind && tr.kind !== 'none') {
+      const dur = (typeof tr.duration === 'number' && tr.duration > 0) ? tr.duration : 0.5;
+      const enterEl = (el) => {
+        if (!el) return;
+        el.style.setProperty('--scn-dur', dur + 's');
+        el.classList.add('scn-' + tr.kind + '-in');
+      };
+      const exitEl = (el) => {
+        if (!el) return;
+        el.style.setProperty('--scn-dur', dur + 's');
+        // in-anim 잔여 제거 후 out-anim 재적용 (새 레이어가 위로 오도록 inline animation 만 갈아끼움)
+        el.style.animation = 'none';
+        void el.offsetWidth;
+        el.classList.remove(...[...el.classList].filter((c) => c.startsWith('scn-')));
+        el.classList.add('scn-' + tr.kind + '-out');
+        el.style.animation = '';
+        setTimeout(() => { if (el && el.parentNode) el.remove(); }, dur * 1000);
+      };
+      enterEl(layer);
+      enterEl(bgLayer);
+      exitEl(prev);
+      exitEl(prevBg);
+    } else {
+      // 트랜지션 없음 — 이전 씬(콘텐츠+배경) 즉시 제거
+      if (prev)   prev.remove();
+      if (prevBg) prevBg.remove();
+    }
+
+    if (BG_FILL === 'off') {
+      // 1) 마스터 배경 (가장 뒤). 단, hideMaster이면 skip
+      if (useMaster && master.background) {
+        const mbg = document.createElement('div');
+        mbg.className = 'scene-bg';
+        mbg.style.backgroundImage = `url("${imgKey(pickLang(master.background, master.backgroundByLang))}")`;
+        layer.appendChild(mbg);
+      }
+      // 2) 씬 배경 (마스터 배경 위에 덮음)
+      if (scene.background) {
+        const bg = document.createElement('div');
+        bg.className = 'scene-bg';
+        bg.style.backgroundImage = `url("${imgKey(scene.background)}")`;
+        layer.appendChild(bg);
+      }
+    }
+
+    // 2.5) 배경 쪽 FX (노드 뒤). 마스터 → 씬 순서로 쌓음.
+    if (useMaster && fxBehind(master.fx)) addSceneFx(layer, master.fx);
+    if (fxBehind(scene.fx)) addSceneFx(layer, scene.fx);
+
+    // 3) 씬 노드들 — element 생성 → DOM 추가 → anim 적용 순서.
+    //    appendChild 후 anim 을 박아야 stylesheet 의 .node.anim-* shorthand 와 inline 의 same-name retrigger 충돌 회피.
+    //    애니메이션이 걸린 그룹의 멤버는 그룹 래퍼 안으로 넣어 "한 덩어리"로 움직이게 함.
+    const groupCache = {};
+    (scene.nodes || []).forEach((n) => {
+      if (nodeHiddenLang(n) || nodeHiddenRatio(n)) return;   // 현재 언어/비율에서 숨김
+      const el = buildNode(n, scene);
+      const target = (n.groupId && hasGroupAnim(scene, n.groupId))
+        ? getGroupWrap(scene, n.groupId, layer, groupCache)
+        : layer;
+      target.appendChild(el);
+      applyNodeAnimations(innerNodeEl(el), n);
+    });
+
+    // 4) 마스터 노드들 (가장 위, hideMaster이면 skip)
+    if (useMaster) {
+      (master.nodes || []).forEach((n) => {
+        if (nodeHiddenLang(n) || nodeHiddenRatio(n)) return;   // 현재 언어/비율에서 숨김
+        const el = buildNode(n, scene);
+        layer.appendChild(el);
+        applyNodeAnimations(innerNodeEl(el), n);
+      });
+    }
+
+    // 4.5) 전경 쪽 FX (노드 위 오버레이). 색종이·반짝이 등 축하 연출.
+    if (!fxBehind(scene.fx)) addSceneFx(layer, scene.fx);
+    if (useMaster && !fxBehind(master.fx)) addSceneFx(layer, master.fx);
+
+    // 씬 레벨 onTap (분기 없는 진행 또는 명시적 액션)
+    if (scene.onTap) {
+      const tap = document.createElement('button');
+      tap.type = 'button';
+      tap.className = 'scene-taparea';
+      tap.addEventListener('click', () => runAction(scene.onTap));
+      layer.appendChild(tap);
+    }
+
+    // 사운드/자동진행은 relayout(비율 재적용) 시 건너뜀 — BGM 끊김·SFX 재생·카운트다운 리셋 방지.
+    if (!relayout) {
+      // 사운드 — 마스터 BGM이 있으면 항상 우선, 씬 BGM은 마스터 없을 때만
+      const masterBgm = cfg.master?.bgm;
+      const masterBgmLoop = cfg.master?.bgmLoop !== false;
+      if (masterBgm) {
+        playBgm(masterBgm, masterBgmLoop);   // 같은 키면 연속 재생 (씬 전환 무관)
+      } else if (scene.bgm) {
+        playBgm(scene.bgm, true);
+      }
+      // SFX: sfxList[] 우선, 없으면 옛 단일 sfx fallback. 각각 delay 후 재생.
+      const sfxList = Array.isArray(scene.sfxList)
+        ? scene.sfxList
+        : (scene.sfx ? [{ key: scene.sfx, volume: 1, delay: 0 }] : []);
+      sfxList.forEach((s) => {
+        if (!s || !s.key) return;
+        const d = Math.max(0, +s.delay || 0);
+        if (d === 0) { playSfx(s.key, s.volume); return; }
+        const t = setTimeout(() => playSfx(s.key, s.volume), d * 1000);
+        state.sfxTimers.push(t);
+      });
+    }
+
+    state.currentLayer = layer;
+    state.currentBgLayer = bgLayer;
+
+    // 자동 진행 / 손가락 인디케이터 — relayout 시엔 기존 타이머 유지(재설정 안 함).
+    if (!relayout) {
+      if (scene.duration && scene.duration > 0) {
+        state.sceneTimer = setTimeout(() => {
+          if (scene.onAutoEnd) runAction(scene.onAutoEnd);
+          else {
+            const nxt = resolveNext(scene);
+            if (nxt) gotoSceneId(nxt); else endPlayable();
+          }
+        }, scene.duration * 1000);
+      }
+
+      // 활성 후 N초 입력 없으면 손가락 인디케이터 (탭 가능 씬만)
+      if (scene.onTap || scene.nodes?.some((n) => n.kind === 'button')) {
+        schedulePokeIndicator(layer, scene);
+      }
+    }
+  }
+
+  // 각 애니메이션의 기본 timing (CSS 클래스에 박힌 값과 동일)
+  const ANIM_META = {
+    'pop':            { dur:0.45, ease:'cubic-bezier(0.2, 1.6, 0.4, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'pop-delayed':    { dur:0.55, ease:'cubic-bezier(0.2, 1.6, 0.4, 1)', iter:1, delay:0.9, fill:'forwards', kind:'intro' },
+    'fadein':         { dur:0.5,  ease:'ease', iter:1, fill:'forwards', kind:'intro' },
+    'fadein-delayed': { dur:0.5,  ease:'ease', iter:1, delay:1.2, fill:'forwards', kind:'intro' },
+    'zoom-in':        { dur:0.45, ease:'cubic-bezier(0.2, 1.6, 0.4, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'zoom-out':       { dur:0.45, ease:'ease-out', iter:1, fill:'forwards', kind:'intro' },
+    'bounce-in':      { dur:0.75, ease:'cubic-bezier(0.34, 1.56, 0.64, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'slide-in-left':  { dur:0.5,  ease:'cubic-bezier(0.2, 0.9, 0.3, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'slide-in-right': { dur:0.5,  ease:'cubic-bezier(0.2, 0.9, 0.3, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'slide-in-top':   { dur:0.5,  ease:'cubic-bezier(0.2, 0.9, 0.3, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'slide-in-bottom':{ dur:0.5,  ease:'cubic-bezier(0.2, 0.9, 0.3, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'flash-in':       { dur:0.18, ease:'ease-in-out', iter:5, fill:'forwards', kind:'intro' },
+    'shake-in':       { dur:0.9,  ease:'cubic-bezier(0.2, 0.7, 0.3, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'slam-in':        { dur:0.7,  ease:'cubic-bezier(0.4, 0, 0.2, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'stamp-in':       { dur:0.55, ease:'cubic-bezier(0.34, 1.6, 0.4, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'rubber-in':      { dur:0.8,  ease:'ease-out', iter:1, fill:'forwards', kind:'intro' },
+    'flip-3d-in':     { dur:0.7,  ease:'ease-out', iter:1, fill:'forwards', kind:'intro' },
+    'starburst-in':   { dur:0.7,  ease:'cubic-bezier(0.34, 1.56, 0.64, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'swirl-in':       { dur:0.8,  ease:'cubic-bezier(0.34, 1.4, 0.64, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'glow-burst-in':  { dur:0.8,  ease:'cubic-bezier(0.2, 0.9, 0.3, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'shine-in':       { dur:0.7,  ease:'cubic-bezier(0.2, 0.8, 0.3, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'light-sweep-in': { dur:0.9,  ease:'cubic-bezier(0.2, 0.9, 0.3, 1)', iter:1, fill:'forwards', kind:'intro' },
+    'glow-pulse-in':  { dur:0.9,  ease:'ease-out', iter:1, fill:'forwards', kind:'intro' },
+    'shimmer-in':     { dur:0.8,  ease:'ease-out', iter:1, fill:'forwards', kind:'intro' },
+    'fade-out':       { dur:0.5,  ease:'ease', iter:1, fill:'forwards', kind:'outro' },
+    'slide-out-left': { dur:0.5,  ease:'ease-in', iter:1, fill:'forwards', kind:'outro' },
+    'slide-out-right':{ dur:0.5,  ease:'ease-in', iter:1, fill:'forwards', kind:'outro' },
+    'flash-out':      { dur:0.18, ease:'ease-in-out', iter:5, fill:'forwards', kind:'outro' },
+    'shake-out':      { dur:0.8,  ease:'cubic-bezier(0.5, 0, 0.8, 0.3)', iter:1, fill:'forwards', kind:'outro' },
+    'shine-out':      { dur:0.7,  ease:'cubic-bezier(0.4, 0, 0.6, 1)', iter:1, fill:'forwards', kind:'outro' },
+    'light-sweep-out':{ dur:0.9,  ease:'ease-in', iter:1, fill:'forwards', kind:'outro' },
+    'dissolve-out':   { dur:0.8,  ease:'ease-out', iter:1, fill:'forwards', kind:'outro' },
+    'shimmer-out':    { dur:0.8,  ease:'ease-out', iter:1, fill:'forwards', kind:'outro' },
+    'bob':    { dur:1.6,  ease:'ease-in-out', iter:'infinite', kind:'loop' },
+    'shake':  { dur:0.18, ease:'ease-in-out', iter:'infinite', kind:'loop' },
+    'spin':   { dur:1.5,  ease:'linear',      iter:'infinite', kind:'loop' },
+    'pulse':  { dur:1.2,  ease:'ease-in-out', iter:'infinite', kind:'loop' },
+    'flash':  { dur:1.2,  ease:'ease-in-out', iter:'infinite', kind:'loop' },
+    'swing':  { dur:1.6,  ease:'ease-in-out', iter:'infinite', kind:'loop' },
+    'rotate': { dur:2.5,  ease:'linear',      iter:'infinite', kind:'loop' },
+    'tada':   { dur:2.4,  ease:'ease-in-out', iter:'infinite', kind:'loop' },
+    'cta':    { dur:1.2,  ease:'ease-in-out', iter:'infinite', kind:'loop' },
+    'glow-loop':    { dur:2,   ease:'ease-in-out', iter:'infinite', kind:'loop' },
+    'shimmer-loop': { dur:2,   ease:'ease-in-out', iter:'infinite', kind:'loop' },
+    'shine-loop':   { dur:2.5, ease:'ease-in-out', iter:'infinite', kind:'loop' },
+    'sweep-loop':   { dur:3,   ease:'ease-in-out', iter:'infinite', kind:'loop', noInline:true },
+    'fxburst':{ dur:1.4,  ease:'ease-out',    iter:1, delay:0.7, fill:'forwards', kind:'special' },
+  };
+
+  // animations 배열을 longhand 속성으로 합성. 각 anim의 phase(intro/loop/outro)는 ANIM_META[kind].kind로 자동.
+  function applyNodeAnimations(el, n) {
+    // fallback: animations가 없으면 옛 anim/animLoop을 즉석에서 변환
+    let list = Array.isArray(n.animations) ? n.animations : null;
+    if (!list) {
+      list = [];
+      if (n.anim)     list.push({ kind:n.anim,     duration:n.animDuration,     delay:n.animDelay,     easing:n.animEasing,     iterations:n.animIterations,     amp:n.animAmp });
+      if (n.animLoop) list.push({ kind:n.animLoop, duration:n.animLoopDuration, delay:n.animLoopDelay, easing:n.animLoopEasing, iterations:n.animLoopIterations, amp:n.animLoopAmp });
+    }
+    if (!list.length) return;
+
+    // 모션 강도: phase별 단일 amp (앞쪽 anim의 amp 우선)
+    list.forEach((a) => {
+      if (!a || !a.kind || a.amp == null || a.amp === '' || Number(a.amp) === 1) return;
+      const meta = ANIM_META[a.kind]; if (!meta) return;
+      const cssVar = (meta.kind === 'loop') ? '--anim-amp-loop' : '--anim-amp-intro';
+      if (!el.style.getPropertyValue(cssVar)) el.style.setProperty(cssVar, String(Number(a.amp)));
+    });
+
+    const names=[], durs=[], eases=[], delays=[], iters=[], fills=[];
+    let cursor = 0;   // 직전 anim 종료 시점 (loop/outro의 자동 delay에 사용)
+
+    list.forEach((a) => {
+      if (!a || !a.kind) return;
+      const meta = ANIM_META[a.kind] || {};
+      el.classList.add('anim-' + a.kind);
+      // noInline: stylesheet 의 ::after 등으로만 처리 — element 자체에 inline anim 박지 않음
+      if (meta.noInline) return;
+      const dur   = +(a.duration ?? meta.dur ?? 0.5);
+      // delay 자동: 미지정 시 loop는 직전 종료시점, intro/outro는 0 (단 intro는 meta.delay)
+      let delay;
+      if (a.delay != null && a.delay !== '') {
+        delay = +a.delay;
+      } else if (meta.kind === 'loop') {
+        delay = cursor;
+      } else if (meta.kind === 'intro') {
+        delay = +(meta.delay ?? 0);
+      } else {
+        delay = 0;
+      }
+      const ease = a.easing || meta.ease || 'ease';
+      const iter = (a.iterations != null && a.iterations !== '') ? a.iterations : (meta.iter ?? 1);
+      const fill = meta.fill || 'none';
+      names.push(`na-${a.kind}`);
+      durs.push(`${dur}s`);
+      eases.push(ease);
+      delays.push(`${delay}s`);
+      iters.push(String(iter));
+      fills.push(fill);
+      // 1회성(인트로/아우트로 등) anim 종료 시점을 cursor로 누적
+      if (meta.kind !== 'loop') {
+        const itr = (iter === 'infinite') ? 1 : Number(iter);
+        cursor = Math.max(cursor, delay + dur * (isNaN(itr) ? 1 : itr));
+      }
+    });
+
+    if (names.length) {
+      // stylesheet의 .node.anim-* { animation: ... } shorthand 와 같은 keyframe name 이면
+      // inline longhand 박아도 브라우저가 새 anim 으로 인식 안 하는 경우가 있음
+      // (특히 transform 기반: flip-3d-in, shake 등).
+      // → 명시적으로 animation:none 으로 cancel 후 reflow → 새 anim 설정 으로 강제 retrigger.
+      el.style.animation = 'none';
+      void el.offsetWidth;
+      el.style.animationName            = names.join(', ');
+      el.style.animationDuration        = durs.join(', ');
+      el.style.animationTimingFunction  = eases.join(', ');
+      el.style.animationDelay           = delays.join(', ');
+      el.style.animationIterationCount  = iters.join(', ');
+      el.style.animationFillMode        = fills.join(', ');
+    }
+  }
+
+  // 그림자: 객체 { on, color, opacity, blur, dist, angle } 또는 레거시 문자열 → CSS 그림자 값.
+  // 반환은 "ox oy blur color" (drop-shadow / text-shadow 공용). 그림자 없으면 null.
+  //   blur=흐림(두께), dist=거리(요소에서 떨어진 정도), angle=방향(0°→, 90°↓, 180°←, 270°↑)
+  //   def = 레거시 색상-only 문자열일 때 쓸 기본 { dist, blur }
+  function shadowToCss(sh, def) {
+    if (!sh) return null;
+    if (typeof sh === 'string') {
+      const t = sh.trim();
+      if (!t) return null;
+      if (t.split(/\s+/).length >= 3) return t;                 // 풀 CSS 값 → 그대로
+      return `0 calc(var(--su) * ${def.dist}) calc(var(--su) * ${def.blur}) ${t}`;
+    }
+    if (typeof sh === 'object') {
+      if (sh.on === false) return null;
+      const blur  = sh.blur  != null ? +sh.blur  : def.blur;
+      const dist  = sh.dist  != null ? +sh.dist  : def.dist;
+      const angle = sh.angle != null ? +sh.angle : 90;
+      const rad = angle * Math.PI / 180;
+      const ox = Math.round(dist * Math.cos(rad) * 1000) / 1000;
+      const oy = Math.round(dist * Math.sin(rad) * 1000) / 1000;
+      return `calc(var(--su) * ${ox}) calc(var(--su) * ${oy}) calc(var(--su) * ${blur}) ${shadowColorCss(sh)}`;
+    }
+    return null;
+  }
+  function shadowColorCss(sh) {
+    const c = sh.color || '#000000';
+    const op = sh.opacity != null ? +sh.opacity : 1;
+    const m6 = /^#([0-9a-fA-F]{6})$/.exec(c);
+    const m3 = /^#([0-9a-fA-F]{3})$/.exec(c);
+    let r, g, b;
+    if (m6) { r = parseInt(m6[1].slice(0, 2), 16); g = parseInt(m6[1].slice(2, 4), 16); b = parseInt(m6[1].slice(4, 6), 16); }
+    else if (m3) { r = parseInt(m3[1][0] + m3[1][0], 16); g = parseInt(m3[1][1] + m3[1][1], 16); b = parseInt(m3[1][2] + m3[1][2], 16); }
+    else return c;   // rgba()/색상이름 등 → opacity 무시, 그대로
+    const a = Math.max(0, Math.min(1, isNaN(op) ? 1 : op));
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+
+  // 이미지/버튼 노드의 stroke + shadow를 filter:drop-shadow 체인으로 적용
+  // (이미지 모양에 맞는 외곽선/그림자 — 사각형 box-shadow 아님)
+  function applyImageFilter(el, n) {
+    const filters = [];
+    // 색상 변형(밝기/채도/색조) — drop-shadow(외곽선/그림자)보다 앞에 둬야 외곽선·그림자 색이 안 변함
+    if (n.brightness != null && +n.brightness !== 1) filters.push(`brightness(${+n.brightness})`);
+    if (n.saturate != null && +n.saturate !== 1) filters.push(`saturate(${+n.saturate})`);
+    if (n.hue) filters.push(`hue-rotate(${+n.hue}deg)`);
+    if (n.stroke && n.strokeWidth) {
+      const w  = `calc(var(--su) * ${n.strokeWidth})`;
+      const wn = `calc(var(--su) * ${-n.strokeWidth})`;   // 음수 오프셋 (-calc() 는 CSS 무효라 부호를 calc 안에)
+      const c = n.stroke;
+      filters.push(`drop-shadow(${w} 0 0 ${c})`);
+      filters.push(`drop-shadow(${wn} 0 0 ${c})`);
+      filters.push(`drop-shadow(0 ${w} 0 ${c})`);
+      filters.push(`drop-shadow(0 ${wn} 0 ${c})`);
+    }
+    const sh = shadowToCss(n.shadow, { dist: 0.6, blur: 1.2 });
+    if (sh) filters.push(`drop-shadow(${sh})`);
+    if (filters.length) el.style.filter = filters.join(' ');
+  }
+
+  // 기본 opacity 를 그룹 래퍼로 분리한다. 애니메이션 키프레임의 opacity(페이드 인/플래시 등)와
+  // 노드 기본 opacity 가 곱셈 합성되도록 (래퍼 opacity × 내부 애니메이션 opacity).
+  // 래퍼가 노드의 위치/크기를 갖고, 내부 노드(.node)는 래퍼를 가득 채운다.
+  function wrapNodeOpacity(el, n) {
+    if (n.opacity == null || n.opacity === 1) return el;
+    const r = resolveRect(n);
+    const wrap = document.createElement('div');
+    wrap.className = 'node-op';
+    wrap.style.position = 'absolute';
+    wrap.style.left = r.x + '%';
+    wrap.style.top = r.y + '%';
+    wrap.style.width = r.w + '%';
+    wrap.style.height = r.h + '%';
+    wrap.style.opacity = String(n.opacity);
+    wrap.style.pointerEvents = 'none';   // 클릭은 내부 노드가 직접 처리 (텍스트 투과 유지)
+    el.style.left = '';
+    el.style.top = '';
+    el.style.width = '100%';
+    el.style.height = '100%';
+    wrap.appendChild(el);
+    return wrap;
+  }
+  // buildNode 결과(래퍼일 수 있음)에서 실제 .node 엘리먼트를 얻는다 (애니메이션 적용 대상).
+  function innerNodeEl(el) {
+    return (el && !el.classList.contains('node')) ? el.querySelector('.node') : el;
+  }
+
+  // 씬 동적 연출(FX) 레이어를 layer 에 추가. behind 여부에 따라 호출 순서로 z 결정.
+  // 캔버스 rAF 는 레이어가 DOM 에서 제거되면(씬 전환) 자동 종료된다(fx.js 의 isConnected 체크).
+  function addSceneFx(layer, fx) {
+    if (!fx || !fx.type || fx.type === 'none') return;
+    if (typeof PlayableFX === 'undefined' || !PlayableFX.create) return;
+    const box = document.createElement('div');
+    box.className = 'fx-layer';
+    layer.appendChild(box);
+    PlayableFX.create(box, fx);
+  }
+  function fxBehind(fx) {
+    if (!fx) return false;
+    if (fx.behind != null) return !!fx.behind;
+    return (typeof PlayableFX !== 'undefined' && PlayableFX.defaultBehind) ? PlayableFX.defaultBehind(fx.type) : false;
+  }
+
+  // 그룹 애니메이션: 그룹 멤버 rect 들의 bbox 중심(stage %) — transform-origin 용
+  function groupBBoxCenter(scene, gid) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    (scene.nodes || []).forEach((n) => {
+      if (n.groupId !== gid) return;
+      const r = resolveRect(n); if (!r) return;
+      minX = Math.min(minX, r.x); minY = Math.min(minY, r.y);
+      maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h);
+    });
+    if (minX === Infinity) return { cx: 50, cy: 50 };
+    return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+  }
+  function hasGroupAnim(scene, gid) {
+    const a = scene.groupAnims && scene.groupAnims[gid];
+    return Array.isArray(a) && a.some((x) => x && x.kind);
+  }
+  // 그룹 래퍼 생성/조회 — 풀스테이지 div, transform-origin=그룹중심, 멤버는 원래 위치 유지.
+  // 래퍼에 그룹 애니메이션을 적용하면 전체가 한 덩어리로 움직임.
+  function getGroupWrap(scene, gid, layer, cache) {
+    if (cache[gid]) return cache[gid];
+    const w = document.createElement('div');
+    w.className = 'node group-anim-wrap';   // 'node' 클래스로 .node.anim-* 초기상태 규칙 적용
+    w.style.position = 'absolute';
+    w.style.inset = '0';
+    w.style.pointerEvents = 'none';
+    const c = groupBBoxCenter(scene, gid);
+    w.style.transformOrigin = c.cx + '% ' + c.cy + '%';
+    layer.appendChild(w);
+    applyNodeAnimations(w, { animations: scene.groupAnims[gid] });
+    cache[gid] = w;
+    return w;
+  }
+
+  function buildNode(n, scene) {
+    const el = document.createElement(n.kind === 'button' ? 'button' : 'div');
+    el.className = 'node kind-' + n.kind;
+    if (n.id) el.dataset.id = n.id;
+
+    // 위치/크기 (언어별 override 반영)
+    const r = resolveRect(n);
+    el.style.left   = r.x + '%';
+    el.style.top    = r.y + '%';
+    el.style.width  = r.w + '%';
+    el.style.height = r.h + '%';
+    // 회전은 개별 transform 속성(rotate)으로 — 등장/반복 애니메이션의 transform(scale/translate)과
+    // 자동 합성되어 애니메이션 중에도 회전이 유지됨. (transform:rotate() 는 키프레임에 덮어써짐)
+    const rot = resolveScalar(n, 'rotate'); if (rot) el.style.rotate = `${rot}deg`;
+    // 기본 opacity 는 마지막에 그룹 래퍼(node-op)로 분리 → 애니메이션 opacity 와 곱셈 합성. (wrapNodeOpacity)
+
+    if (n.kind === 'image') {
+      const imgK = resolveImage(n);
+      if (imgK) el.style.backgroundImage = `url("${imgKey(imgK)}")`;
+      applyImageFilter(el, n);
+    } else if (n.kind === 'shape') {
+      const st = n.shapeType || 'rect';
+      el.classList.add('shape-' + st);
+      if (n.fillColor) el.style.setProperty('--shape-fill', n.fillColor);
+      if (n.stroke && (n.strokeWidth || 0) > 0 && st !== 'parallelogram' && st !== 'trapezoid' && !el.style.clipPath) {
+        // clip-path 사용 도형은 border 잘림 — clip-path 없는 (rect/circle/ellipse) 에서만 border 적용
+        if (st === 'rect' || st === 'circle' || st === 'ellipse') {
+          el.style.border = `calc(var(--su) * ${n.strokeWidth}) solid ${n.stroke}`;
+        }
+      }
+      if (st === 'rect' && n.borderRadius) {
+        el.style.borderRadius = `calc(var(--su) * ${n.borderRadius})`;
+      }
+      if (st === 'parallelogram') {
+        const s = Math.max(0, Math.min(45, resolveScalar(n, 'slant') ?? 20));
+        el.style.clipPath = `polygon(${s}% 0, 100% 0, ${100 - s}% 100%, 0 100%)`;
+      } else if (st === 'trapezoid') {
+        const s = Math.max(0, Math.min(45, resolveScalar(n, 'slant') ?? 20));
+        el.style.clipPath = `polygon(${s}% 0, ${100 - s}% 0, 100% 100%, 0 100%)`;
+      }
+    } else if (n.kind === 'text') {
+      el.classList.add('align-' + (n.align || 'left'));
+      el.classList.add('valign-' + (n.verticalAlign || 'middle'));
+      el.style.fontSize = `calc(var(--su) * ${resolveFont(n)})`;
+      el.style.color = n.color || '#fff';
+      if (n.fontFamily) el.style.fontFamily = n.fontFamily;
+      if (n.fontWeight) el.style.fontWeight = String(n.fontWeight);
+      if (n.italic) el.style.fontStyle = 'italic';
+      if (n.letterSpacing) el.style.letterSpacing = `calc(var(--su) * ${n.letterSpacing})`;
+      if (n.lineHeight) el.style.lineHeight = String(n.lineHeight);
+      if (n.bgColor) el.style.backgroundColor = n.bgColor;
+      if (n.padding) el.style.padding = `calc(var(--su) * ${n.padding})`;
+      if (n.borderRadius) el.style.borderRadius = `calc(var(--su) * ${n.borderRadius})`;
+      // stroke: 'sharp' (기본, webkit-text-stroke) | 'soft' (text-shadow 8방향)
+      const swNum = n.strokeWidth ?? 0.3;
+      const useSoft = n.stroke && swNum > 0 && n.strokeStyle === 'soft';
+      if (n.stroke && swNum > 0 && !useSoft) {
+        el.style.webkitTextStroke = `calc(var(--su) * ${swNum}) ${n.stroke}`;
+      }
+      const ts = [];
+      if (useSoft) {
+        const sw = `calc(var(--su) * ${swNum})`, swn = `calc(var(--su) * ${-swNum})`, c = n.stroke;
+        ts.push(`${sw} 0 0 ${c}`, `${swn} 0 0 ${c}`, `0 ${sw} 0 ${c}`, `0 ${swn} 0 ${c}`,
+                `${sw} ${sw} 0 ${c}`, `${swn} ${swn} 0 ${c}`, `${sw} ${swn} 0 ${c}`, `${swn} ${sw} 0 ${c}`);
+      }
+      const tsh = shadowToCss(n.shadow, { dist: 0.3, blur: 0.6 });
+      if (tsh) ts.push(tsh);
+      if (ts.length) el.style.textShadow = ts.join(', ');
+      const span = document.createElement('span');
+      span.textContent = resolveText(n);
+      el.appendChild(span);
+    } else if (n.kind === 'button') {
+      el.type = 'button';
+      const imgK = resolveImage(n);
+      if (imgK) el.style.backgroundImage = `url("${imgKey(imgK)}")`;
+      if (n.bgColor) { el.classList.add('has-bg-color'); el.style.setProperty('--bg', n.bgColor); }
+      if (n.borderRadius) el.style.borderRadius = `calc(var(--su) * ${n.borderRadius})`;
+      applyImageFilter(el, n);
+      const lbl = resolveLabel(n);
+      if (lbl) {
+        el.style.fontSize = `calc(var(--su) * ${resolveFont(n)})`;
+        if (n.color) el.style.color = n.color;
+        if (n.fontFamily) el.style.fontFamily = n.fontFamily;
+        el.textContent = lbl;
+      }
+    }
+
+    // 모든 노드 종류 공통: onTap 액션이 있으면 클릭 가능
+    // (button 노드는 기본 onTap 없어도 동작 — onTap 안 박혀있으면 'next'로 fallback)
+    const effectiveTap = n.onTap || (n.kind === 'button' ? { type: 'next' } : null);
+    if (effectiveTap) {
+      el.classList.add('has-tap');
+      // text 노드는 기본 pointer-events:none 이라 override 필요
+      el.style.pointerEvents = 'auto';
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        runAction(effectiveTap);
+      });
+    }
+
+    return wrapNodeOpacity(el, n);
+  }
+
+  function schedulePokeIndicator(layer, scene) {
+    const t = (cfg.meta?.pokeDelay ?? 1.5) * 1000;
+    setTimeout(() => {
+      if (state.currentSceneId !== scene.id) return;
+      if (!layer.isConnected) return;
+      const f = document.createElement('div');
+      f.className = 'indicator-finger';
+      layer.appendChild(f);
+    }, t);
+  }
+
+  function clearSceneTimer() {
+    if (state.sceneTimer) { clearTimeout(state.sceneTimer); state.sceneTimer = null; }
+    // 이전 씬에서 예약된 sfx 도 함께 취소 (씬 전환 후 발화 방지)
+    state.sfxTimers.forEach((t) => clearTimeout(t));
+    state.sfxTimers = [];
+  }
+
+  // ── 전역 로고 ─────────────────────────
+  function applyGlobalLogo(sceneId) {
+    if (!globalLogo) return;
+    const logo = cfg.meta?.logo;
+    if (!logo || !logo.image) { globalLogo.classList.remove('visible'); return; }
+    if (sceneId && Array.isArray(logo.hideOnScenes) && logo.hideOnScenes.indexOf(sceneId) >= 0) {
+      globalLogo.classList.remove('visible'); return;
+    }
+    const resolvedKey = pickLang(logo.image, logo.imageByLang);
+    const src = imgKey(resolvedKey);
+    if (!src) { globalLogo.classList.remove('visible'); return; }
+
+    globalLogo.style.backgroundImage = `url("${src}")`;
+    const w = (logo.w ?? 22);
+    globalLogo.style.width = w + '%';
+    globalLogo.style.height = 'auto';
+    globalLogo.style.top = ''; globalLogo.style.left = ''; globalLogo.style.right = ''; globalLogo.style.bottom = '';
+    globalLogo.style.transform = '';
+    const pos = logo.position || 'top-left';
+    if (pos === 'top-left')        { globalLogo.style.top = (logo.y ?? 4) + '%'; globalLogo.style.left = (logo.x ?? 4) + '%'; }
+    else if (pos === 'top-right')  { globalLogo.style.top = (logo.y ?? 4) + '%'; globalLogo.style.right = (logo.x ?? 4) + '%'; }
+    else if (pos === 'top-center') { globalLogo.style.top = (logo.y ?? 4) + '%'; globalLogo.style.left = '50%'; globalLogo.style.transform = 'translateX(-50%)'; }
+    else if (pos === 'bottom-left'){ globalLogo.style.bottom = (logo.y ?? 4) + '%'; globalLogo.style.left = (logo.x ?? 4) + '%'; }
+    else if (pos === 'bottom-right'){ globalLogo.style.bottom = (logo.y ?? 4) + '%'; globalLogo.style.right = (logo.x ?? 4) + '%'; }
+    else                            { globalLogo.style.top = (logo.y ?? 4) + '%'; globalLogo.style.left = (logo.x ?? 4) + '%'; }
+
+    const probe = new Image();
+    probe.onload = () => {
+      globalLogo.style.aspectRatio = probe.naturalWidth + ' / ' + probe.naturalHeight;
+      globalLogo.classList.add('visible');
+    };
+    probe.onerror = () => globalLogo.classList.add('visible');
+    probe.src = src;
+  }
+
+  // ── 종료 ──────────────────────────────
+  function endPlayable() {
+    if (state.ended) return;
+    state.ended = true;
+    clearSceneTimer();
+    setTimeout(() => finalCta.classList.add('visible'), (cfg.meta?.autoEndCtaDelay ?? 0.6) * 1000);
+  }
+
+  // ── 부팅 ──────────────────────────────
+  function boot() {
+    layoutContentBox();
+    if (!cfg.scenes || !cfg.scenes.length) {
+      console.warn('CONFIG.scenes is empty — open editor.html to set up.');
+      return;
+    }
+    gotoSceneId(cfg.scenes[0].id);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+
+  window.__playable = { state, cfg, gotoSceneId, endPlayable, runAction };
+})();
+
+</script>
+</body>
+</html>
