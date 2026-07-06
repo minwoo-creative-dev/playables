@@ -9,33 +9,57 @@
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
-         background:#0e0f13; color:#e9eaee; padding:48px 20px; }
-  .wrap { max-width:760px; margin:0 auto; }
-  h1 { font-size:22px; margin:0 0 4px; }
-  p.sub { margin:0 0 28px; color:#8a8f9c; font-size:14px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px; }
+         background:#0e0f13; color:#e9eaee; padding:44px 20px 80px; }
+  .wrap { max-width:1040px; margin:0 auto; }
+  header h1 { font-size:22px; margin:0 0 4px; }
+  header p { margin:0 0 8px; color:#8a8f9c; font-size:13px; }
+  section { margin-top:34px; }
+  section h2 { font-size:15px; font-weight:700; color:#c7cbd6; margin:0 0 14px;
+               padding-bottom:8px; border-bottom:1px solid #22252e; display:flex; align-items:center; gap:8px; }
+  .count { font-size:12px; font-weight:600; color:#7d84ff; background:#1b1e29; border-radius:20px; padding:2px 9px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:16px; }
   .card { display:flex; flex-direction:column; text-decoration:none; color:inherit;
-          background:#181a20; border:1px solid #262932; border-radius:12px; overflow:hidden; transition:.15s; }
-  .card:hover { transform:translateY(-2px); border-color:#5b6bff; }
-  .thumb { aspect-ratio:16/10; display:flex; align-items:center; justify-content:center;
-           font-size:34px; color:#5b6bff; background:radial-gradient(circle at 50% 40%,#20232d,#14151b); }
-  .meta { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; }
-  .name { font-size:14px; font-weight:600; word-break:break-all; }
-  .go { font-size:12px; color:#7d84ff; white-space:nowrap; margin-left:8px; }
-  footer { margin-top:36px; color:#5a5f6b; font-size:12px; text-align:center; }
+          background:#171922; border:1px solid #262932; border-radius:14px; overflow:hidden; transition:.15s; }
+  .card:hover { transform:translateY(-3px); border-color:#5b6bff; box-shadow:0 8px 24px rgba(0,0,0,.35); }
+  .thumb { aspect-ratio:16/10; display:flex; align-items:center; justify-content:center; overflow:hidden;
+           font-size:32px; color:#5b6bff; background:radial-gradient(circle at 50% 38%,#20232d,#131419); }
+  .thumb img { width:100%; height:100%; object-fit:cover; }
+  .body { padding:12px 14px 13px; display:flex; flex-direction:column; gap:7px; flex:1; }
+  .title { font-size:14px; font-weight:600; line-height:1.35; word-break:break-word; }
+  .tags { display:flex; flex-wrap:wrap; gap:5px; }
+  .tag { font-size:11px; color:#aab0c0; background:#1e212b; border-radius:6px; padding:2px 7px; }
+  .note { font-size:12px; color:#8a8f9c; line-height:1.4; }
+  .foot { margin-top:auto; display:flex; justify-content:space-between; align-items:center;
+          font-size:11px; color:#5f6472; padding-top:4px; }
+  .open { color:#7d84ff; font-weight:600; }
+  footer { margin-top:48px; color:#5a5f6b; font-size:12px; text-align:center; }
 </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>Creative Playables</h1>
-    <p class="sub">리뷰용 플레이어블 소재 모음 · 1개</p>
-    <div class="grid">
-      <a class="card" href="./playable_cc_01_gacha/">
-        <div class="thumb">▶</div>
-        <div class="meta"><span class="name">playable_cc_01_gacha</span><span class="go">열기 →</span></div>
-      </a>
-    </div>
-    <footer>internal review preview · link-only access</footer>
+    <header>
+      <h1>Creative Playables</h1>
+      <p>리뷰용 플레이어블 소재 모음 · 총 1개</p>
+    </header>
+    
+      <section>
+        <h2>CookieRun <span class="count">1</span></h2>
+        <div class="grid">
+        <a class="card" href="./playable_cc_01_gacha/">
+          <div class="thumb"><span>▶</span></div>
+          <div class="body">
+            <div class="title">CC_Gacha</div>
+            <div class="tags">
+              <span class="tag">#01</span>
+              <span class="tag">gacha</span>
+            </div>
+            
+            <div class="foot">updated 2026-07-06<span class="open">열기 →</span></div>
+          </div>
+        </a>
+        </div>
+      </section>
+    <footer>internal review preview · link-only access (검색 노출 없음)</footer>
   </div>
 </body>
 </html>
