@@ -14,9 +14,7 @@
 playables/
 ├─ index.html          # 갤러리 (gen-index.js 가 자동 생성 — 직접 수정 X)
 ├─ gen-index.js        # 목록 생성기 (폴더 + meta.json 스캔)
-├─ publish.sh          # 소재 추가/갱신 (CLI 및 게시서버 공용)
-├─ publish-server.js   # 로컬 게시 서버 (에디터 '🚀 프리뷰 게시' 수신)
-├─ 게시서버.command     # 게시 서버 더블클릭 런처
+├─ publish.sh          # 소재 추가/갱신 (스튜디오 /api/publish 및 CLI 공용)
 ├─ .nojekyll           # Pages Jekyll 처리 비활성 (언더스코어 폴더 안전)
 └─ playable_<게임>_<번호>_<컨셉>/
      ├─ index.html     # 빌드된 플레이어블 (필수)
@@ -29,12 +27,12 @@ playables/
 
 ## 새 소재 추가 / 갱신
 
-### 방법 A — 에디터 '🚀 프리뷰 게시' 버튼 (권장, 터미널 없음)
-1. **게시 서버 켜기**: 이 폴더의 `게시서버.command` 더블클릭 (창을 열어둔 채로 둠).
-2. 에디터에서 편집 → 상단 **🚀 프리뷰 게시** 클릭.
-3. 폴더명(예: `playable_cc_01_gacha`) + 메모(선택) 입력 → 끝. 링크가 뜨고 복사까지 됩니다.
+### 방법 A — 스튜디오 '🚀 프리뷰 게시' 버튼 (권장, 터미널 없음)
+1. **creative-playable-studio** 실행 (`start.command` 더블클릭 또는 `npm run dev`, 포트 8090).
+2. 에디터(`localhost:8090/editor.html?p=<프로젝트>`)에서 편집 → 상단 **🚀 프리뷰 게시** 클릭.
+3. 폴더명(기본=프로젝트 id) + 메모(선택) 확인 → 끝. 링크가 뜨고 복사까지 됩니다.
    - 같은 폴더명으로 다시 게시하면 **교체**됩니다(URL 유지).
-   - 에디터가 내부적으로 빌드(`buildSingleHTML`)해서 게시 서버로 보내고, 서버는 아래 `publish.sh` 를 실행합니다.
+   - 스튜디오 서버(`../creative-playable-studio/server.js`)의 `POST /api/publish` 가 에디터의 빌드 결과(`buildSingleHTML`)를 받아 이 `publish.sh` 를 실행합니다. **별도 게시 서버 불필요.**
 
 ### 방법 B — CLI
 ```bash
