@@ -14,7 +14,9 @@
 playables/
 ├─ index.html          # 갤러리 (gen-index.js 가 자동 생성 — 직접 수정 X)
 ├─ gen-index.js        # 목록 생성기 (폴더 + meta.json 스캔)
-├─ publish.sh          # 소재 추가/갱신 원클릭
+├─ publish.sh          # 소재 추가/갱신 (CLI 및 게시서버 공용)
+├─ publish-server.js   # 로컬 게시 서버 (에디터 '🚀 프리뷰 게시' 수신)
+├─ 게시서버.command     # 게시 서버 더블클릭 런처
 ├─ .nojekyll           # Pages Jekyll 처리 비활성 (언더스코어 폴더 안전)
 └─ playable_<게임>_<번호>_<컨셉>/
      ├─ index.html     # 빌드된 플레이어블 (필수)
@@ -27,18 +29,22 @@ playables/
 
 ## 새 소재 추가 / 갱신
 
-소스 프로젝트(`../playable_*`)에서 빌드한 뒤 `publish.sh` 로 올립니다.
+### 방법 A — 에디터 '🚀 프리뷰 게시' 버튼 (권장, 터미널 없음)
+1. **게시 서버 켜기**: 이 폴더의 `게시서버.command` 더블클릭 (창을 열어둔 채로 둠).
+2. 에디터에서 편집 → 상단 **🚀 프리뷰 게시** 클릭.
+3. 폴더명(예: `playable_cc_01_gacha`) + 메모(선택) 입력 → 끝. 링크가 뜨고 복사까지 됩니다.
+   - 같은 폴더명으로 다시 게시하면 **교체**됩니다(URL 유지).
+   - 에디터가 내부적으로 빌드(`buildSingleHTML`)해서 게시 서버로 보내고, 서버는 아래 `publish.sh` 를 실행합니다.
 
+### 방법 B — CLI
 ```bash
 # 1) 소스에서 데이터(JSON) 포함 빌드
 cd ../playable_cc_01_gacha
 node build.js --config /path/to/CC_Gacha_2026-07-06.json
-
-# 2) 허브에서 배포 (복사 → meta.json → 목록 재생성 → push)
+# 2) 허브에서 배포 (복사 → meta.json → 목록 재생성 → push → Pages 재빌드)
 cd ../playables
 ./publish.sh playable_cc_01_gacha ../playable_cc_01_gacha/dist/playable-gacha.html "1차 리뷰본"
 ```
-
 `publish.sh <폴더명> <빌드HTML> ["메모"]` — 메모는 선택. 같은 폴더명으로 다시 실행하면 갱신됩니다.
 
 ### 썸네일 넣기 (선택)
