@@ -1401,7 +1401,7 @@ function setupSplitHandle(){
   positionHandle();
 }
 window.addEventListener('resize', ()=>{ pickOrient();   // 리사이즈/회전 시 UI 스케일(uiK) 재계산 반영 — 텍스트·타이머·손가락·카드 노드 다시 적용
-  try{ applyChrome(); updateStartUI(); if(tapGuideVisible) showTapGuide(tapGuidePreview); if(pokeVisible) showPoke();
+  try{ applyChrome(); updateStartUI(); requestAnimationFrame(refreshLayoutCache); if(tapGuideVisible) showTapGuide(tapGuidePreview); if(pokeVisible) showPoke();
        if($('#clearScreen')&&$('#clearScreen').classList.contains('show')) renderClearNodes();
        if($('#endScreen')&&$('#endScreen').classList.contains('show')) renderEndNodes(); }catch(_){}
 });
@@ -1770,10 +1770,18 @@ function bossHitFlash(){
 }
 
 /* ── 임팩트 지점 (보스 위 랜덤) — 데미지 숫자·스파크가 같은 점 공유 ── */
-function impactPoint(){
-  const g=$('#gameRegion'); const bx=$('#bossArt').getBoundingClientRect(); const gr=g.getBoundingClientRect();
-  return { x:(bx.left-gr.left)+bx.width*(0.26+Math.random()*0.48),
-           y:(bx.top-gr.top)+bx.height*(0.12+Math.random()*0.5) };
+/* 레이아웃 캐시 — 전투 중 매 타격마다 getBoundingClientRect(강제 동기 레이아웃=끊김) 하지 않도록 게임영역·보스 위치를 캐시.
+   전투 중엔 정적이라 유효. 전투 개시(begin)·리사이즈·보스 배치 변경 때만 갱신. */
+let LC={ gW:1, gH:1, bossCX:0.5, bossCY:0.38, bossW:0, bossH:0 };
+function refreshLayoutCache(){
+  const g=$('#gameRegion'), ba=$('#bossArt'); if(!g) return;
+  const gr=g.getBoundingClientRect(); LC.gW=gr.width||1; LC.gH=gr.height||1;
+  if(ba){ const br=ba.getBoundingClientRect(); if(br.width){ LC.bossW=br.width; LC.bossH=br.height; LC.bossCX=(br.left-gr.left)+br.width/2; LC.bossCY=(br.top-gr.top)+br.height/2; } }
+}
+function impactPoint(){   // 캐시 기반(getBoundingClientRect 없음)
+  const bw=LC.bossW||LC.gW*0.38, bh=LC.bossH||bw;
+  const bl=LC.bossCX-bw/2, bt=LC.bossCY-bh/2;
+  return { x: bl + bw*(0.26+Math.random()*0.48), y: bt + bh*(0.12+Math.random()*0.5) };
 }
 /* ── 데미지 숫자 팝업 (- 접두 + 값 크기별 색) ── */
 function popDmg(val, crit, pt){
@@ -1801,6 +1809,7 @@ function popSpark(pt, crit){
   g.appendChild(s); setTimeout(()=>s.remove(),400);
 }
 /* ── 피격 부스러기 FX — 타격마다 쿠키 부스러기가 튀어 떨어짐 (battle.hitCrumbs 로 설정) ── */
+let crumbLive=0;   // 동시 존재 부스러기 수(상한 방어용)
 function popCrumbs(pt, crit){
   const cfg=(PROJECT.battle&&PROJECT.battle.hitCrumbs)||{};
   if(cfg.enabled===false) return;
@@ -1811,6 +1820,7 @@ function popCrumbs(pt, crit){
   const spread=(cfg.spread!=null?cfg.spread:64)*(crit?1.25:1);
   const fall=(cfg.fall!=null?cfg.fall:120);
   for(let i=0;i<count;i++){
+    if(crumbLive>=90) break;   // 동시 파티클 상한 — 타격 몰릴 때 폭주 방지(끊김 방어)
     const c=document.createElement('div'); c.className='crumb';
     const sz=size*(0.6+Math.random()*0.8);
     const tx=(Math.random()*2-1)*spread;
@@ -1827,8 +1837,8 @@ function popCrumbs(pt, crit){
     c.style.setProperty('--pop', pop.toFixed(1)+'px');
     c.style.setProperty('--tr', tr+'deg');
     c.style.animationDuration=dur.toFixed(2)+'s';
-    g.appendChild(c);
-    setTimeout(()=>c.remove(), Math.ceil(dur*1000)+50);
+    g.appendChild(c); crumbLive++;
+    setTimeout(()=>{ c.remove(); crumbLive--; }, Math.ceil(dur*1000)+50);
   }
 }
 
@@ -1839,9 +1849,10 @@ function cookieAttack(id){
   // 1) 돌진 시작 — 이 쿠키→보스 방향을 계산해 --dx/--dy 세팅
   const cel=$('#chars .charSlot[data-cid="'+id+'"]');
   if(cel){
-    const ba0=$('#bossArt'); const cr=cel.getBoundingClientRect(); const br=ba0.getBoundingClientRect();
-    const dx=((br.left+br.width/2)-(cr.left+cr.width/2))*0.72;   // 보스 중심의 72%까지 접근
-    const dy=((br.top+br.height/2)-(cr.top+cr.height/2))*0.72;
+    // 쿠키 중심 = 앵커%(style.left/top) × 게임영역 크기(캐시) — getBoundingClientRect(강제 레이아웃) 안 씀
+    const cx=(parseFloat(cel.style.left)||50)/100*LC.gW, cy=(parseFloat(cel.style.top)||50)/100*LC.gH;
+    const dx=(LC.bossCX-cx)*0.72;   // 보스 중심의 72%까지 접근
+    const dy=(LC.bossCY-cy)*0.72;
     cel.style.setProperty('--dx', dx+'px'); cel.style.setProperty('--dy', dy+'px');
     cel.classList.remove('atk'); void cel.offsetWidth; cel.classList.add('atk');
     // 공격 포즈 교체(등록 시): 돌진 동안 battleImageAtk → 복귀 시 idle(battleImage). 보스 피격 이미지와 동일 방식
@@ -1859,12 +1870,14 @@ function cookieAttack(id){
     if(crit) dmg*=2;
     dmg=Math.max(1,Math.round(dmg));
     S.hp-=dmg; S.crumbs+=crumbPerHit;
-    const pt=impactPoint();
-    popDmg(dmg, crit, pt); popSpark(pt, crit); popCrumbs(pt, crit); playSfx(crit?'crit':'hit');
+    // ① 애니 재시작(void offsetWidth=reflow) — DOM 추가 전이라 레이아웃 깨끗(강제 재계산 최소화)
     const ba=$('#bossArt'); ba.classList.remove('hit','crit'); void ba.offsetWidth; ba.classList.add('hit'); if(crit) ba.classList.add('crit');
     if(crit){ const gr=$('#gameRegion'); gr.classList.remove('shake'); void gr.offsetWidth; gr.classList.add('shake'); }   // 크리 화면 흔들림
-    bossHitFlash();   // 피격 이미지 잠깐 교체(등록 시) — 흔들림·번쩍임과 중첩 유지
-    updateHP(); hpHitFx(crit);   // HP바 갱신 + 피격 강조(트레일·번쩍임·throb)
+    bossHitFlash();   // 피격 이미지 잠깐 교체(등록 시)
+    updateHP(); hpHitFx(crit);   // HP바 갱신 + 피격 강조
+    // ② 파티클/숫자 추가(DOM write) — 이후 강제 read 없음(레이아웃 스래싱 방지). impactPoint 은 캐시 기반
+    const pt=impactPoint();
+    popDmg(dmg, crit, pt); popSpark(pt, crit); popCrumbs(pt, crit); playSfx(crit?'crit':'hit');
     if(S.hp<=0) onBossDefeated();
   }, 210);
 }
@@ -2179,7 +2192,7 @@ function stageInBattle(){
 function startBattle(){
   S.running=true; S.staging=false;   // 워크인 개시 → 전장 노출
   const ch=$('#chars'); if(ch) ch.style.display='';   // 선택 단계/START 연출에 숨겼던 필드 쿠키 표시
-  const begin=()=>{ if(!S.running) return; if(S.bossIdx===0 && S.timerStart==null) startTimer(); scheduleAttacks(); startMapDrift(); scheduleTapGuide(tapGuideCfg().delay); };   // 타이머·공격·맵이동·탭유도는 스테이징 끝나고(실전투) 시작
+  const begin=()=>{ if(!S.running) return; refreshLayoutCache(); if(S.bossIdx===0 && S.timerStart==null) startTimer(); scheduleAttacks(); startMapDrift(); scheduleTapGuide(tapGuideCfg().delay); };   // 타이머·공격·맵이동·탭유도는 스테이징 끝나고(실전투) 시작. LC 갱신(이후 타격은 캐시 사용=강제 레이아웃 없음)
   if(S.bossIdx===0 && (PROJECT.battle&&PROJECT.battle.walkIn!==false)){
     bossArtLayout();   // 보스 배틀 위치(started=true 반영) 확정 후 스테이징
     stageInBattle(); setTimeout(begin, WALKIN_MS+20);
@@ -2214,47 +2227,52 @@ function bgLayoutApply(){
 }
 /* ── 맵 이동(배경 스크롤) — 전투 중 배경만 좌우 왕복(사인파)시켜 '맵을 이동하며 교전' 연출. 캐릭터는 제자리 ── */
 let driftRAF=null, driftT0=0, driftPh=[0,0,0,0];
-let driftLastX=null, driftLastY=null, driftLastWrite=0;   // 드리프트 재페인트 스로틀(모바일 끊김 완화): ~30fps 상한 + 값 변화 시에만 objectPosition 갱신
 function mapDriftCfg(){ return (PROJECT.battle&&PROJECT.battle.mapDrift)||{}; }
 function baseBgFocus(){ const L=(S.orient==='landscape'&&PROJECT.bgLayoutLandscape)?PROJECT.bgLayoutLandscape:(PROJECT.bgLayout||{}); return { x:(L.x!=null?L.x:50), y:(L.y!=null?L.y:50) }; }
+/* 맵 이동: object-position(매 프레임 배경 풀 리페인트=모바일 끊김) 대신 transform translate+scale(GPU 합성, 리페인트 0).
+   초점(objectPosition)은 bgLayoutApply가 정적으로 세팅, 여기선 transform 만 갱신. scale 헤드룸으로 팬 여유 확보(가장자리 노출 방지·전투 시작 시 램프인). */
 function startMapDrift(){
   stopMapDrift();
   const el=$('#bgArt'); if(!el) return;
   // 전투마다 위상 랜덤화 → 매번 조금씩 다른 궤적(예측 불가)
   driftPh=[Math.random()*Math.PI*2, Math.random()*Math.PI*2, Math.random()*Math.PI*2, Math.random()*Math.PI*2];
+  el.style.willChange='transform';   // GPU 레이어 승격 → transform 은 리페인트 없이 합성만
   const step=(ts)=>{
     if(!S.running){ driftRAF=null; return; }
     if(!driftT0) driftT0=ts;
     const md=mapDriftCfg(), b=baseBgFocus();   // 설정·초점 매 프레임 재조회 → 에디터 실시간 편집 반영
+    const L=(S.orient==='landscape'&&PROJECT.bgLayoutLandscape)?PROJECT.bgLayoutLandscape:(PROJECT.bgLayout||{});
+    const z=(L.zoom!=null?L.zoom:100)/100;   // 기존 배경 줌
     const amp=(md.amp!=null?md.amp:22), period=(md.period!=null?md.period:6);
     const irr=Math.max(0,Math.min(1,(md.irregular!=null?md.irregular:50)/100));   // 불규칙 정도 0~1
-    let x=b.x;
+    let scale=z, panFrac=0;
     if(md.enabled!==false && amp>0 && period>0){
       const t=(ts-driftT0)/1000, TP=2*Math.PI, ph=driftPh;
-      const ramp=Math.min(1, t/0.9);   // 진폭 램프인(0→1, 0.9s) — 시작 순간 base+amp*sin(랜덤위상) 점프(튐) 방지, 배경이 base 에서 부드럽게 흐르기 시작
+      const ramp=Math.min(1, t/0.9);   // 램프인(0→1, 0.9s) — 시작 시 z에서 부드럽게(팬·줌 튐 방지)
       const base=Math.sin(TP*t/period + ph[0]);
-      if(irr<=0){ x=b.x + ramp*amp*base; }             // 0 = 기존 순수 사인파(하위호환)
+      let n;   // 정규화 파형 -1..1
+      if(irr<=0){ n=base; }                              // 0 = 순수 사인파(하위호환)
       else {
-        // 무리수비 주기의 성분 합성 → 비반복 자연 드리프트
-        const fast=Math.sin(TP*t/(period*0.53) + ph[1]);   // 빠른 성분: 순간 이동 속도가 불규칙해짐
-        const slow=Math.sin(TP*t/(period*2.17) + ph[2]);   // 느린 성분: 왕복 중심이 서서히 표류(범위 변화)
-        const mix=0.55*base + 0.22*fast + 0.23*slow;        // 가중합(≈±1 유지)
-        const ampMod=1 - irr*0.45*(0.5+0.5*Math.sin(TP*t/(period*3.7)+ph[3]));  // 진폭 변조: 왕복 폭 자체가 커졌다 작아졌다
-        const blend=(1-irr)*base + irr*mix;                 // irr↑ → 순수 사인 → 합성으로 전환
-        x=b.x + ramp*amp*ampMod*blend;
+        const fast=Math.sin(TP*t/(period*0.53) + ph[1]);   // 빠른 성분: 순간 이동 속도 불규칙
+        const slow=Math.sin(TP*t/(period*2.17) + ph[2]);   // 느린 성분: 왕복 중심 표류
+        const mix=0.55*base + 0.22*fast + 0.23*slow;
+        const ampMod=1 - irr*0.45*(0.5+0.5*Math.sin(TP*t/(period*3.7)+ph[3]));   // 진폭 변조
+        n=ampMod*((1-irr)*base + irr*mix);
       }
-      if(x<0)x=0; if(x>100)x=100;
+      n=Math.max(-1,Math.min(1,n));
+      const targetFrac=Math.min(0.06, amp/100*0.28);          // 팬 진폭(박스폭 대비) — amp 매핑 + 상한 6%
+      const minSide=Math.max(0.12, Math.min(b.x,100-b.x)/100);// 초점 편심 고려한 여유 계산
+      const fullS=Math.max(z, 1 + targetFrac/(minSide*0.9));  // 팬 여유(가장자리 안 보이게) 위한 최소 스케일
+      scale = z + ramp*(fullS - z);
+      panFrac = ramp*targetFrac*n;
     }
-    const xr=Math.round(x*10)/10;   // 0.1% 해상도 — 미세 변화(정지점 부근)엔 재페인트 스킵
-    if((ts-driftLastWrite>=32) && (xr!==driftLastX || b.y!==driftLastY)){   // ~30fps 상한 + 값 변화 시에만 → 배경 풀페인트 부하↓(모바일 끊김 완화)
-      el.style.objectPosition=xr+'% '+b.y+'%'; driftLastX=xr; driftLastY=b.y; driftLastWrite=ts;
-    }
+    el.style.transformOrigin=b.x+'% '+b.y+'%';
+    el.style.transform='translate3d('+(panFrac*100).toFixed(3)+'%,0,0) scale('+scale.toFixed(4)+')';   // GPU 합성(리페인트 없음)
     driftRAF=requestAnimationFrame(step);
   };
-  driftLastX=null; driftLastY=null; driftLastWrite=0;
   driftT0=0; driftRAF=requestAnimationFrame(step);
 }
-function stopMapDrift(){ if(driftRAF){ cancelAnimationFrame(driftRAF); driftRAF=null; } driftT0=0; }
+function stopMapDrift(){ if(driftRAF){ cancelAnimationFrame(driftRAF); driftRAF=null; } driftT0=0; const el=$('#bgArt'); if(el) el.style.willChange=''; bgLayoutApply(); }   // 정적 배경(초점+줌) 복원
 function applyChrome(){
   CURRENT_LANG=getLang();   // 언어 재계산(_forceLang/고정언어 변경 반영)
   const stSrc=textImgSrc('sectionTitle');   // 팀 선택 타이틀: 이미지 등록 시 이미지, 아니면 텍스트
