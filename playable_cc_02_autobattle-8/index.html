@@ -119,7 +119,7 @@
   .ssh.crit { height:5px; background:linear-gradient(90deg,#fff,#ff8a3d); }
   /* 피격 부스러기 — 타격 지점에서 위로 톡 튄 뒤 중력 낙하(가로 흩어짐+회전+페이드). 크기·색·개수는 JS 인라인 */
   .crumb { position:absolute; z-index:7; pointer-events:none; transform:translate(-50%,-50%);
-           box-shadow:0 1px 1px rgba(0,0,0,.35); animation:crumbfall .8s ease-out forwards; }
+           animation:crumbfall .8s ease-out forwards; }   /* box-shadow 제거 → 파티클당 페인트 없이 transform+opacity(컴포지터 전용)로 가볍게(모바일 지속 부하↓) */
   @keyframes crumbfall {
     0%   { transform:translate(-50%,-50%) rotate(0) scale(1); opacity:0; }
     12%  { opacity:1; }
@@ -1819,7 +1819,7 @@ function impactPoint(){   // 캐시 기반(getBoundingClientRect 없음)
 const fxPools=Object.create(null);   // key → 유휴 엘리먼트 리스트
 const fxAll=[];   // 생성된 모든 파티클(리셋 정리용)
 let fxLive=0;     // 동시 활성 파티클 수(상한)
-const FX_CAP=120; // 전역 상한 — 타격 폭주(연타) 시 파티클 폭발 방지
+const FX_CAP=100; // 전역 상한(총 동시 파티클) — 연타·지속 전투 시 폭발/지속부하 방지
 /* 무거운 FX(스파크·부스러기·타격음) 레이트 제한 — 연타해도 파티클/사운드가 idle 수준을 넘지 않게(끊김 방지).
    데미지 숫자·HP감소·보스 흔들림은 게이트 밖(매 타격 그대로) → 연타의 '빠른 처치' 손맛 유지 */
 let lastHeavyFx=0;
@@ -1836,6 +1836,7 @@ function fxGet(key, cls){
 function clearFx(){ for(const k in fxPools) fxPools[k]=[]; fxAll.forEach(el=>{ el.style.display='none'; el.style.animationName='none'; el._live=false; (fxPools[el._fk]||(fxPools[el._fk]=[])).push(el); }); fxLive=0; }
 /* ── 데미지 숫자 팝업 (- 접두 + 값 크기별 색) ── */
 function popDmg(val, crit, pt){
+  if(fxLive>=FX_CAP) return;   // 총 파티클 상한(데미지도 포함) — 지속 부하 제한. dmg 는 히트 핸들러에서 먼저 스폰돼 우선권
   const p=pt||impactPoint();
   const el=fxGet('dmg', 'dmg'+(crit?' crit':(val>=22?' hi':(val>=13?' mid':''))));
   el.textContent='-'+val;
