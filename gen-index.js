@@ -17,7 +17,8 @@ const ROOT = __dirname;
 
 // 게임 코드 → 표시명 (필요 시 여기만 추가)
 const GAME_LABEL = {
-  cc:   'CookieRun',
+  cc:   'CookieRun: Crumble',
+  cos:  'CookieRun: OvenSmash',
   ck:   'CookieRun: Kingdom',
   crob: 'CookieRun: OvenBreak',
   cw:   'CookieRun: Witch’s Castle',
