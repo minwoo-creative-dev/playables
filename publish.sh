@@ -25,9 +25,9 @@ NOTE="${3:-}"
 mkdir -p "$NAME"
 cp "$SRC" "$NAME/index.html"
 
-# meta.json 작성 (폴더명 파싱 + HTML title). createdAt 은 최초 1회만 기록, updatedAt 은 매번 갱신.
+# meta.json 작성 (폴더명 파싱 + HTML title). createdAt 은 최초 1회만 기록, updatedAt 은 매번 갱신(날짜+시각).
 TITLE="$(grep -o '<title>[^<]*' "$NAME/index.html" | head -1 | sed 's/<title>//')"
-FOLDER="$NAME" TITLE="$TITLE" NOTE="$NOTE" DATE="$(date +%Y-%m-%d)" node -e '
+FOLDER="$NAME" TITLE="$TITLE" NOTE="$NOTE" DATE="$(date +%Y-%m-%d)" STAMP="$(date '+%Y-%m-%d %H:%M %Z')" node -e '
   const fs = require("fs");
   const f = process.env.FOLDER;
   const m = f.match(/^playable_([a-z0-9]+)_(\d+)_(.+)$/i) || [];
@@ -41,7 +41,7 @@ FOLDER="$NAME" TITLE="$TITLE" NOTE="$NOTE" DATE="$(date +%Y-%m-%d)" node -e '
     concept: m[3] || "",
     note:    process.env.NOTE || "",
     createdAt,
-    updatedAt: process.env.DATE,
+    updatedAt: process.env.STAMP,   // 날짜+시각+TZ (언제 반영됐는지 명확히)
   };
   fs.writeFileSync(p, JSON.stringify(meta, null, 2) + "\n");
   console.log("meta:", JSON.stringify(meta));
