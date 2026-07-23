@@ -2214,6 +2214,7 @@ function bgLayoutApply(){
 }
 /* ── 맵 이동(배경 스크롤) — 전투 중 배경만 좌우 왕복(사인파)시켜 '맵을 이동하며 교전' 연출. 캐릭터는 제자리 ── */
 let driftRAF=null, driftT0=0, driftPh=[0,0,0,0];
+let driftLastX=null, driftLastY=null, driftLastWrite=0;   // 드리프트 재페인트 스로틀(모바일 끊김 완화): ~30fps 상한 + 값 변화 시에만 objectPosition 갱신
 function mapDriftCfg(){ return (PROJECT.battle&&PROJECT.battle.mapDrift)||{}; }
 function baseBgFocus(){ const L=(S.orient==='landscape'&&PROJECT.bgLayoutLandscape)?PROJECT.bgLayoutLandscape:(PROJECT.bgLayout||{}); return { x:(L.x!=null?L.x:50), y:(L.y!=null?L.y:50) }; }
 function startMapDrift(){
@@ -2244,9 +2245,13 @@ function startMapDrift(){
       }
       if(x<0)x=0; if(x>100)x=100;
     }
-    el.style.objectPosition=x+'% '+b.y+'%';
+    const xr=Math.round(x*10)/10;   // 0.1% 해상도 — 미세 변화(정지점 부근)엔 재페인트 스킵
+    if((ts-driftLastWrite>=32) && (xr!==driftLastX || b.y!==driftLastY)){   // ~30fps 상한 + 값 변화 시에만 → 배경 풀페인트 부하↓(모바일 끊김 완화)
+      el.style.objectPosition=xr+'% '+b.y+'%'; driftLastX=xr; driftLastY=b.y; driftLastWrite=ts;
+    }
     driftRAF=requestAnimationFrame(step);
   };
+  driftLastX=null; driftLastY=null; driftLastWrite=0;
   driftT0=0; driftRAF=requestAnimationFrame(step);
 }
 function stopMapDrift(){ if(driftRAF){ cancelAnimationFrame(driftRAF); driftRAF=null; } driftT0=0; }
