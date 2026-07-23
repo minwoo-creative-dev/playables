@@ -8,7 +8,7 @@
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
   html,body { width:100%; height:100%; overflow:hidden; background:#222; font-family:-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
-  #stage { position:fixed; inset:0; display:flex; }
+  #stage { position:fixed; inset:0; display:flex; touch-action:manipulation; }   /* 더블탭 줌/제스처 지연 제거 → 연타 반응 즉각(모바일) */
 
   /* ── 분할 레이아웃 ── */
   #stage.portrait { flex-direction:column; }
@@ -1750,9 +1750,12 @@ function updateHP(){
   }
 }
 /* HP바 피격 강조: 남은 체력 밝게 번쩍 + 바 세로 throb (트레일과 함께 '깎임'을 눈에 띄게) */
+let hpFxAt=0;
 function hpHitFx(crit){
   const cfg=(PROJECT.battle&&PROJECT.battle.hpFx)||{};
   if(cfg.enabled===false || cfg.flash===false) return;
+  const now=performance.now(); if(now-hpFxAt<=130) return;   // 최근에 이미 번쩍였으면 스킵(연타 시 리플로우 절감) — 트레일(updateHP)은 매번 반영
+  hpFxAt=now;
   const f=$('#hpFill'); if(f){ f.classList.remove('hit','hitcrit'); void f.offsetWidth; f.classList.add(crit?'hitcrit':'hit'); }
   const t=$('#hpTrack'); if(t){ t.classList.remove('throb','throbcrit'); void t.offsetWidth; t.classList.add(crit?'throbcrit':'throb'); }
 }
@@ -1876,7 +1879,8 @@ function cookieAttack(id){
     const dx=(LC.bossCX-cx)*0.72;   // 보스 중심의 72%까지 접근
     const dy=(LC.bossCY-cy)*0.72;
     cel.style.setProperty('--dx', dx+'px'); cel.style.setProperty('--dy', dy+'px');
-    cel.classList.remove('atk'); void cel.offsetWidth; cel.classList.add('atk');
+    const nowL=performance.now();   // 돌진 애니 재시작 스로틀 — 이미 돌진 중이면 재시작(리플로우) 생략(연타 시 강제 레이아웃 절감)
+    if(nowL-(cel._atkAt||0)>200){ cel.classList.remove('atk'); void cel.offsetWidth; cel.classList.add('atk'); cel._atkAt=nowL; }
     // 공격 포즈 교체(등록 시): 돌진 동안 battleImageAtk → 복귀 시 idle(battleImage). 보스 피격 이미지와 동일 방식
     const cimg=cel.querySelector('img'); const atk=ck.battleImageAtk&&PROJECT.assets&&PROJECT.assets[ck.battleImageAtk];
     if(cimg && atk){ if(cel._pose!=='atk'){ cimg.src=atk; cel._pose='atk'; } clearTimeout(cel._revT);   // 이미 공격 포즈면 재설정 안 함(연타 시 재디코드 방지)
@@ -1892,9 +1896,11 @@ function cookieAttack(id){
     if(crit) dmg*=2;
     dmg=Math.max(1,Math.round(dmg));
     S.hp-=dmg; S.crumbs+=crumbPerHit;
-    // ① 애니 재시작(void offsetWidth=reflow) — DOM 추가 전이라 레이아웃 깨끗(강제 재계산 최소화)
-    const ba=$('#bossArt'); ba.classList.remove('hit','crit'); void ba.offsetWidth; ba.classList.add('hit'); if(crit) ba.classList.add('crit');
-    if(crit){ const gr=$('#gameRegion'); gr.classList.remove('shake'); void gr.offsetWidth; gr.classList.add('shake'); }   // 크리 화면 흔들림
+    // ① 애니 재시작(void offsetWidth=reflow) — 최근에 이미 재생 중이면 재시작 생략(연타 시 강제 레이아웃 폭주 방지). 데미지·파티클은 매 타격마다 그대로
+    const nowH=performance.now();
+    const ba=$('#bossArt');
+    if(nowH-(ba._hitAt||0)>150){ ba.classList.remove('hit','crit'); void ba.offsetWidth; ba.classList.add('hit'); if(crit) ba.classList.add('crit'); ba._hitAt=nowH; }
+    if(crit){ const gr=$('#gameRegion'); if(nowH-(gr._shakeAt||0)>200){ gr.classList.remove('shake'); void gr.offsetWidth; gr.classList.add('shake'); gr._shakeAt=nowH; } }   // 크리 화면 흔들림
     bossHitFlash();   // 피격 이미지 잠깐 교체(등록 시)
     updateHP(); hpHitFx(crit);   // HP바 갱신 + 피격 강조
     // ② 파티클/숫자 추가(DOM write) — 이후 강제 read 없음(레이아웃 스래싱 방지). impactPoint 은 캐시 기반
