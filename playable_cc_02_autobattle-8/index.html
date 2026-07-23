@@ -2154,16 +2154,16 @@ function showEndCard(fromSplash){
 
 /* ── 전투 시작/리셋 ── */
 /* 전투 스테이징 — 전투 시작 시 카메라 무빙처럼: 보스 중앙→배틀위치 슬라이드 + 쿠키 좌측에서 등장 (첫 보스만) */
-const WALKIN_MS=1300;
+const FADEIN_MS=520;   // 보스·쿠키 동시 페이드인 시간(전투 시작 시 제자리에서 함께 나타남)
 function stageInBattle(){
   const chars=[].slice.call(document.querySelectorAll('#chars .charSlot'));
-  const boss=$('#bossArt');
-  const ease='left 1.3s cubic-bezier(.2,.85,.3,1)';
-  chars.forEach(el=>{ const rest=el.style.left; el.style.transition='none'; el.style.left='-25%'; void el.offsetWidth; el.style.transition=ease; el.style.left=rest; });   // 쿠키: 좌측 화면 밖에서 등장
-  // 보스: 우측 화면 밖(125%)에서 진입 — 스플래시 후 "양쪽에서 등장" (visibility 복원은 first paint가 화면 밖이라 rest 위치 깜빡임 없음)
-  if(boss){ boss.style.visibility=''; const rest=boss.style.left; const from='125%'; boss.style.transition='none'; boss.style.left=from; void boss.offsetWidth; boss.style.transition=ease; boss.style.left=rest; }
-  trackBossShadow(WALKIN_MS+120);   // 슬라이드 동안 그림자가 보스를 실시간으로 따라가게(끝에서 튀지 않게)
-  setTimeout(()=>{ chars.forEach(el=>el.style.transition=''); if(boss) boss.style.transition=''; positionBossShadow(); }, WALKIN_MS+80);
+  const boss=$('#bossArt'); const sh=$('#bossShadow');
+  const fade='opacity '+(FADEIN_MS/1000)+'s ease-out';
+  // 보스·쿠키를 제자리(rest 위치)에 둔 채 동시에 fade-in (슬라이드/워크인 없음)
+  chars.forEach(el=>{ el.style.transition='none'; el.style.opacity='0'; void el.offsetWidth; el.style.transition=fade; el.style.opacity='1'; });
+  if(boss){ boss.style.visibility=''; boss.style.transition='none'; boss.style.opacity='0'; void boss.offsetWidth; boss.style.transition=fade; boss.style.opacity='1'; }
+  if(sh){ sh.style.display=''; sh.style.transition='none'; sh.style.opacity='0'; void sh.offsetWidth; sh.style.transition=fade; positionBossShadow(); }   // 그림자도 함께 페이드인(positionBossShadow가 목표 opacity 세팅→transition으로 0→목표)
+  setTimeout(()=>{ chars.forEach(el=>{ el.style.transition=''; el.style.opacity=''; }); if(boss){ boss.style.transition=''; boss.style.opacity=''; } if(sh) sh.style.transition=''; positionBossShadow(); }, FADEIN_MS+80);
 }
 function startBattle(){
   S.running=true; S.staging=false;   // 워크인 개시 → 전장 노출
@@ -2171,14 +2171,14 @@ function startBattle(){
   const begin=()=>{ if(!S.running) return; if(S.bossIdx===0 && S.timerStart==null) startTimer(); scheduleAttacks(); startMapDrift(); scheduleTapGuide(tapGuideCfg().delay); };   // 타이머·공격·맵이동·탭유도는 스테이징 끝나고(실전투) 시작
   if(S.bossIdx===0 && (PROJECT.battle&&PROJECT.battle.walkIn!==false)){
     bossArtLayout();   // 보스 배틀 위치(started=true 반영) 확정 후 스테이징
-    stageInBattle(); setTimeout(begin, WALKIN_MS+20);
-  } else { bossArtLayout(); const ba=$('#bossArt'); if(ba) ba.style.visibility=''; begin(); }   // 워크인 없으면 보스 즉시 노출
+    stageInBattle(); setTimeout(begin, FADEIN_MS+20);
+  } else { bossArtLayout(); const ba=$('#bossArt'); if(ba) ba.style.visibility=''; begin(); }   // 등장 연출 없으면 보스 즉시 노출
 }
 function resetGame(){
   $('#overlay').classList.remove('show'); hideClearScreen(); hideEndScreen();
   S.running=false; S.staging=false; clearAttackTimers(); stopMapDrift(); stopTrackBossShadow(); hideStartSplash(); hideTapGuide();
   applyChrome(); applyLayout();   // 리셋/프로젝트 교체 시에도 배경·분할·초점 즉시 복원(맵이동 오프셋 원위치)
-  { const ba=$('#bossArt'); ba.classList.remove('hit','crit','flyout'); ba.style.animation=''; ba.style.visibility=''; }   // 이전 전투 연출 클래스/애니 정리 + 보스 노출 복원(스플래시·날아가기 중 리셋 대비)
+  { const ba=$('#bossArt'); ba.classList.remove('hit','crit','flyout'); ba.style.animation=''; ba.style.visibility=''; ba.style.opacity=''; ba.style.transition=''; }   // 이전 전투 연출 클래스/애니/페이드 정리 + 보스 노출 복원(스플래시·날아가기·페이드인 중 리셋 대비)
   { const sh=$('#bossShadow'); if(sh){ sh.style.transition=''; sh.style.opacity=''; } }
   $('#gameRegion').classList.remove('shake');
   S.deck=[...PROJECT.battle.startingDeck]; S.bossIdx=0; S.crumbs=0;
