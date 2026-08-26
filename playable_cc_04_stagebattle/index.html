@@ -70,9 +70,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 .mob:not(.boss).flip .mi,.mob:not(.boss).flip .fb{transform:scaleX(-1);}
 /* 발밑 그림자 — 검은 타원. 크기(--shw)·진하기(--sha)는 JS 가 넣는다.
    DOM 상 맨 앞이라 뒤에 오는 절대배치 레이어가 자연히 위에 깔린다. */
+/* 발밑 그림자 — ★filter:blur() 를 쓰면 안 된다.
+   필터가 걸린 엘리먼트는 움직일 때마다 다시 래스터화된다. 몹마다 하나씩 달려 있으니 비용이
+   몹 수에 정비례했고, 실기기에서 「몹이 나오면 한 자리 FPS, 몹이 사라지면 60」이 됐다(2026-08-26 신고).
+   같은 모양을 그라디언트의 알파 감쇠로 만든다 — 가장자리가 부드럽고, 필터 패스가 없다. */
 .mob .msh{position:absolute;left:50%;bottom:var(--shy,10%);width:var(--shw,64%);
   transform:translateX(-50%);aspect-ratio:3/1;border-radius:50%;
-  background:#000;opacity:var(--sha,.32);filter:blur(calc(1.5px*var(--uiK)));pointer-events:none;}
+  background:radial-gradient(closest-side,#000 0%,#000 58%,rgba(0,0,0,.55) 80%,rgba(0,0,0,0) 100%);
+  opacity:var(--sha,.32);pointer-events:none;}
 .mob.boss .msh{display:none;}
 .mob .fb{width:100%;height:100%;border-radius:48% 48% 46% 46%;
   background:radial-gradient(circle at 40% 34%,hsl(var(--h),68%,58%),hsl(var(--h),72%,34%));box-shadow:inset 0 -3px 6px rgba(0,0,0,.35),0 2px 5px rgba(0,0,0,.4);}
@@ -2028,17 +2033,44 @@ function nearestTargets(m, n){
 /* ═══════════════════════════════════════════════════════════════
    엔티티 풀 (몹·발사체) + 무리(히어로)
    ═══════════════════════════════════════════════════════════════ */
-const mobPool=[], projPool=[];
+const projPool=[];
+/* ★배경 그림은 「값이 바뀔 때만」 대입한다.
+   자산이 data URI 라 문자열이 3~5만 자다. 대입할 때마다 브라우저가 그 url() 을 통째로 다시 파싱하는데,
+   몹은 웨이브마다 새로 나오므로(한 마리당 3장) 그 비용이 끝없이 쌓였다 —
+   실기기 계측에서 JS 가 프레임당 평균 90ms·최대 600ms 를 먹고 FPS 가 한 자리로 떨어졌다(2026-08-26).
+   풀에서 꺼낸 엘리먼트는 대개 같은 그림을 이미 들고 있어, 이 가드 하나로 대입 자체가 사라진다.
+   ★쿠키 전신이 예전부터 img.src 를 안 갈아끼운 것과 같은 이유다(오토배틀 검증 패턴). */
+const _bgUrl=Object.create(null);
+function bgUrlOf(key){
+  if(!key) return '';
+  let v=_bgUrl[key];
+  if(v===undefined){ const src=resolveImg(key); v=_bgUrl[key]= src?('url("'+src+'")'):''; }
+  return v;
+}
+function setBgKey(el, key){
+  if(!el) return;
+  const k=key||'';
+  if(el._bgKey===k) return;                 // 같은 그림이면 아무 것도 안 한다
+  el._bgKey=k;
+  el.style.backgroundImage=bgUrlOf(k);
+}
 /* 그림자는 DOM 맨 앞 — 뒤에 오는 절대배치 레이어(fb/mi)가 자연히 위에 깔린다(z-index 불필요) */
-function getMobEl(){ let el=mobPool.pop(); if(!el){ el=document.createElement('div'); el.className='ent mob';
+/* ★풀을 「몹 종류별」로 나눈다.
+   한 풀에 섞어 두면 꺼낼 때마다 다른 종류가 걸려 그림을 다시 붙이게 된다(2종이면 절반이 그렇다).
+   종류별로 나누면 재사용 엘리먼트가 이미 그 그림을 들고 있어 대입이 아예 없어진다. */
+const mobPools=Object.create(null);
+function getMobEl(tag){ const k=tag||'_';
+  const pool=mobPools[k]||(mobPools[k]=[]);
+  let el=pool.pop(); if(!el){ el=document.createElement('div'); el.className='ent mob';
   el.innerHTML='<div class="msh"></div><div class="fb"></div><div class="mi mi-idle"></div><div class="mi mi-w2"></div><div class="mi mi-hit"></div><div class="mhp"><i></i></div>';
-  $('#entLayer').appendChild(el); } el.style.display=''; el.classList.remove('hit-pose','f2','flip'); return el; }
+  $('#entLayer').appendChild(el); }
+  el._mtag=k; el.style.display=''; el.classList.remove('hit-pose','f2','flip'); return el; }
 /* 풀로 돌려보낼 때 상태를 전부 되돌린다 — 보스로 썼거나 죽는 중이던 엘리먼트가 그대로 재사용된다 */
 function relMobEl(el){
   el.style.display='none'; el.style.opacity=''; el.className='ent mob'; el.style.removeProperty('--hitk');
   el.style.zIndex=''; el._z=null;
   const hp=el.querySelector('.mhp'); if(hp) hp.style.display='';
-  mobPool.push(el);
+  const k=el._mtag||'_'; (mobPools[k]||(mobPools[k]=[])).push(el);   // 꺼냈던 종류 칸으로 되돌린다
 }
 /* 쓰러진 몹·보스를 회전시켜 화면 밖으로 날려 보낸다.
    ★CSS 애니메이션을 쓰지 않는다 — 위치는 매 프레임 인라인 transform 으로 쓰고 있어서
@@ -2128,7 +2160,7 @@ function reconcileMembers(){
     const el=document.createElement('div'); el.className='ent hero sel-flash';
     // 대기/공격 포즈를 겹쳐 생성 — 이후 클래스 토글만(재디코드 없음)
     const idle=document.createElement('div'); idle.className='bi bi-idle';
-    idle.style.backgroundImage='url("'+cookieBattleImg(ck)+'")';
+    idle.style.backgroundImage=('url("'+cookieBattleImg(ck)+'")'); idle._bgKey='ck:'+ck.id;
     el.appendChild(idle);
     const atkSrc=resolveImg(ck.battleImageAtk);
     if(atkSrc){ const a=document.createElement('div'); a.className='bi bi-atk'; a.style.backgroundImage='url("'+atkSrc+'")'; el.appendChild(a); }
@@ -2244,14 +2276,13 @@ function pickMobType(){
 function spawnMob(){
   if(SCENE_HOLD==='endcard' || SCENE_HOLD==='clear') return;   // 정지 씬 위로 몹이 기어들어오지 않게
   if(S && S.bossPending) return;                               // 보스 대기 중엔 더 안 내보낸다
-  const w=PROJECT.wave||{}; const el=getMobEl();
+  const w=PROJECT.wave||{};
   const mt=pickMobType();
+  const el=getMobEl('m:'+(mt.image||'')+'|'+(mt.image2||'')+'|'+(mt.imageHit||''));
   const fb=el.querySelector('.fb');
   const img=resolveImg(mt.image), img2=resolveImg(mt.image2), imgHit=resolveImg(mt.imageHit);
   const idle=el.querySelector('.mi-idle'), w2=el.querySelector('.mi-w2'), hit=el.querySelector('.mi-hit');
-  idle.style.backgroundImage = img?('url("'+img+'")'):'';
-  w2.style.backgroundImage   = img2?('url("'+img2+'")'):'';
-  hit.style.backgroundImage  = imgHit?('url("'+imgHit+'")'):'';
+  setBgKey(idle, mt.image); setBgKey(w2, mt.image2); setBgKey(hit, mt.imageHit);
   fb.style.display = img?'none':'';
   el.classList.remove('f2','flip');
   applyMobShadow(el);
@@ -2432,13 +2463,11 @@ function triggerBossWarn(){
 function spawnBoss(){
   const b=PROJECT.boss||{}; S.phase='boss';
   $('#bossWarn').classList.remove('show');
-  const el=getMobEl(); el.className='ent mob boss'; const fb=el.querySelector('.fb');
+  const el=getMobEl('boss'); el.className='ent mob boss'; const fb=el.querySelector('.fb');
   const img=resolveImg(b.image), imgHit=resolveImg(b.imageHit);
   const idle=el.querySelector('.mi-idle'), hit=el.querySelector('.mi-hit');
   const img2=resolveImg(b.image2);
-  idle.style.backgroundImage = img?('url("'+img+'")'):'';
-  el.querySelector('.mi-w2').style.backgroundImage = img2?('url("'+img2+'")'):'';
-  hit.style.backgroundImage  = imgHit?('url("'+imgHit+'")'):'';
+  setBgKey(idle, b.image); setBgKey(el.querySelector('.mi-w2'), b.image2); setBgKey(hit, b.imageHit);
   fb.style.display = img?'none':'';
   if(!img) fb.style.setProperty('--h', b.hue!=null?b.hue:288);
   el.querySelector('.mhp').style.display='none';   // 보스는 상단 HP바 사용(엔티티 위 미니바 숨김)
@@ -3288,15 +3317,19 @@ const SHOW_FPS = /[?&#]fps\b/.test(location.search+location.hash) || /[?&]debug=
      off=sfx      효과음 · off=bgm 배경음 · off=shadow 몹 그림자 · off=hpbar 몹 체력바
      off=fx       이펙트 아이콘/불꽃 · off=dmg 피해 숫자 · off=depth 앞뒤 정렬(z-index)
      off=hit      피격 빨간 물들임 · off=anim CSS 애니메이션 · off=bg 필드 배경 그림
+     off=dshadow  쿠키·보스의 drop-shadow · off=willchange 레이어 승격(will-change)
    ★주소에 안 쓰면 아무것도 안 꺼진다 — 평소 빌드·매체 검수에는 영향이 없다. */
 const OFF=(function(){ const m=/[?&]off=([^&#]*)/.exec(location.search);
   return m ? decodeURIComponent(m[1]).toLowerCase().split(',').map(x=>x.trim()).filter(Boolean) : []; })();
 function isOff(k){ return OFF.indexOf(k)>=0; }
+if(SHOW_FPS) fpsWrapAll();      // 함수별 최대 시간 기록 (표시기를 켰을 때만)
 if(OFF.length){
   const css=[];
   if(isOff('shadow')) css.push('.mob .msh{display:none !important;}');
   if(isOff('hpbar'))  css.push('.mob .mhp{display:none !important;}');
   if(isOff('hit'))    css.push('.mob .mi,.mob .fb{filter:none !important;}');
+  if(isOff('dshadow'))css.push('.hero .bi{filter:none !important;} .mob.boss{filter:none !important;}');
+  if(isOff('willchange')) css.push('.ent{will-change:auto !important;}');
   if(isOff('anim'))   css.push('*{animation:none !important;}');
   if(isOff('bg'))     css.push('#fieldBg{display:none !important;}');
   if(css.length){ const el=document.createElement('style'); el.id='offCss'; el.textContent=css.join('\n');
@@ -3306,6 +3339,22 @@ let fpsEl=null, fpsN=0, fpsMs=0, fpsWorstWin=0, fpsWorstAll=0, fpsHitch=0, fpsMi
 /* 프레임 시간을 「우리 JS」와 「그 바깥(스타일·레이아웃·페인트·GC)」으로 갈라 본다.
    둘 중 어디가 먹는지 모르면 고칠 곳을 못 정한다 — 헤드리스에서 재현이 안 돼 실기기 숫자가 필요하다. */
 let fpsJsMs=0, fpsJsLast=0, fpsJsN=0, fpsJsMax=0, fpsWorstSnap='';
+/* 어느 함수가 오래 잡아먹는지 이름으로 알려준다 — 실기기에서만 나는 문제라 폰이 직접 지목해야 한다.
+   SHOW_FPS 일 때만 감싸므로 평소 빌드에는 없는 코드다. */
+const fpsTop=Object.create(null);
+function fpsWrapAll(){
+  ['spawnMob','spawnBoss','fireProj','hitMob','hitBoss','blastAt','chainFrom','popDmg','popIcon','popSpark',
+   'markHit','flingOut','stepDying','updateBossBar','playSfx','render','reconcileMembers','sizeMembers',
+   'renderRoster','applyChrome','refreshLayoutCache','applyMobShadow','setBgKey','getMobEl','relMobEl'
+  ].forEach(n=>{ const f=window[n]; if(typeof f!=='function') return;
+    window[n]=function(){ const a=performance.now(); const r=f.apply(this,arguments);
+      const d=performance.now()-a; if(d>(fpsTop[n]||0)) fpsTop[n]=d; return r; }; });
+}
+function fpsTopText(){
+  const ks=Object.keys(fpsTop).sort((a,b)=>fpsTop[b]-fpsTop[a]).slice(0,3);
+  if(!ks.length) return '-';
+  return ks.map(k=>k+' '+Math.round(fpsTop[k])).join(' · ');
+}
 function fpsJs(ms){ if(!SHOW_FPS) return; fpsJsLast=ms; fpsJsMs+=ms; fpsJsN++; if(ms>fpsJsMax) fpsJsMax=ms; }
 function fpsSample(ms){
   if(!SHOW_FPS) return;
@@ -3334,6 +3383,7 @@ function fpsSample(ms){
     +'최악때: '+(fpsWorstSnap||'-')+'\n'
     +'JS 평균 '+jsAvg.toFixed(1)+'ms (최대 '+Math.round(fpsJsMax)+')\n'
     +'JS밖 평균 '+Math.max(0,frameAvg-jsAvg).toFixed(1)+'ms  경과 '+fpsSec.toFixed(0)+'s\n'
+    +'느린곳: '+fpsTopText()+'\n'
     +(S ? ('몹'+S.mobs.length+' 탄'+S.projs.length+' 쿠키'+S.members.length+' fx'+fxLive+'  '+S.phase+'\n') : '')
     +(st?st.clientWidth:0)+'×'+(st?st.clientHeight:0)+'  dpr'+(window.devicePixelRatio||1)
     +(OFF.length?('\n끔: '+OFF.join(',')):'');
