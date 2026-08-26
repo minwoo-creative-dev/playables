@@ -827,6 +827,7 @@ function playOneSfx(key, vol){
 /* 반환값 = 실제로 재생한 Audio 배열(에디터 미리듣기가 정지시킬 수 있게).
    음소거·제스처 전이면 undefined, 등록된 소리가 없으면 null. */
 function playSfx(evt, force){
+  if(isOff('sfx') && !force) return null;
   if(MUTE && !force) return; if(!userGestured && !force) return;
   const list=sndItems(evt); if(!list.length) return null;
   const picks = (sndMode(evt)==='random') ? [list[(Math.random()*list.length)|0]] : list;
@@ -895,6 +896,7 @@ function startBgmEl(src, vol, loop){
   bgmAudio=a;
 }
 function playBgm(force){
+  if(isOff('bgm')) return;
   const s=sndCfg('bgm'), it=sndItems('bgm')[0]||{}, key=it.key||'', src=audSrc(key);   // BGM 은 한 곡만
   if(!src || MUTE){ stopBgm(); return; }
   if(!userGestured && !force){ pendingBgm=true; return; }
@@ -1666,6 +1668,7 @@ function clearFx(){ for(const k in fxPools) fxPools[k]=[]; fxAll.forEach(el=>{ e
 /* 피해 숫자 — 「맞은 쪽이 깎인다」로 읽히게 음수로 띄우고, 위치도 때린 쿠키가 아니라 맞은 대상 위다.
    회복이 +N(초록)이라 부호 규칙이 서로 맞는다. 0으로 반올림될 땐 '-0' 이 되지 않게 부호를 뺀다. */
 function popDmg(val, x, y, crit){
+  if(isOff('dmg')) return;
   if(fxLive>=FX_CAP) return;
   const n=Math.round(val);
   const el=fxGet('dmg','dmg'+(crit?' crit':'')); el.textContent=(n>0?'-':'')+n;
@@ -1674,6 +1677,7 @@ function popDmg(val, x, y, crit){
   el.style.display=''; el.style.animationName='dmgpop'; el._live=true; fxLive++;
 }
 function popSpark(x, y, hue, n){
+  if(isOff('fx')) return;
   if(!heavyFxAllowed()) return;
   n=n||6;
   for(let i=0;i<n;i++){ if(fxLive>=FX_CAP) break;
@@ -1874,6 +1878,7 @@ function filterFor(col){
   return f;
 }
 function popIcon(x, y, icon, px, col){
+  if(isOff('fx')) return;
   if(fxLive>=FX_CAP) return;
   const el=fxGet('fxicon','fxIcon m-'+(ICON_MOTION[icon]||'rise'));
   const d=Math.max(6, Math.round((px||ICON_BASE_PX)*uiK()));
@@ -2544,8 +2549,10 @@ function loop(now){
   if(SHOW_FPS) fpsSample(dt*1000);          // ★자르기 전 값으로 재야 큰 멈춤이 보인다
   if(dt>0.05) dt=0.05; if(dt<0) dt=0;
   if(!S||!S.running){ return; }
+  const _js0 = SHOW_FPS ? performance.now() : 0;
   tickPickHint(dt);        // 선택 화면 유도 — 전투 전에도 돌아야 하므로 step 바깥
   step(dt); render();
+  if(SHOW_FPS) fpsJs(performance.now()-_js0);
 }
 function step(dt){
   S.t+=dt;
@@ -2863,7 +2870,8 @@ function hitBoss(p){
 /* ── 렌더(transform3d write) ── */
 /* 깊이 정렬 — 아래(y 큰) 쪽이 앞. 무리·몹·보스가 뒤섞여 서 있을 때 앞뒤가 뒤집혀 보이는 걸 막는다.
    ★값이 바뀔 때만 쓴다(매 프레임 z-index 를 다시 쓰면 브라우저가 레이어를 계속 다시 쌓는다). */
-function depth(el, y){ const z=Math.round(y)+100; if(el._z!==z){ el._z=z; el.style.zIndex=z; } }
+function depth(el, y){ if(isOff('depth')) return;
+  const z=Math.round(y)+100; if(el._z!==z){ el._z=z; el.style.zIndex=z; } }
 function render(){
   tickTimer();
   tickCustomTexts();
@@ -3272,8 +3280,33 @@ if(SHOW_DBG) $('#dbg').style.display='block';   // CSS 가 display:none 이라 '
    엘리먼트를 만들므로 평소 빌드에는 아무 영향이 없다.
    ★프레임 간격은 loop 이 dt 를 0.05 로 자르기 전 값으로 재야 한다 — 자른 값으로는 큰 멈춤이 안 보인다.
    ★글자는 4번/초만 갈아끼운다. 표시기가 스스로 프레임을 잡아먹으면 재는 의미가 없다. */
-const SHOW_FPS = /[?&]fps=1/.test(location.search) || /(^|#|&)fps(=1)?($|&)/.test(location.hash);
+/* ?fps · ?fps=1 · #fps · &fps=1 · ?debug=1 — 어떻게 쳐도 켜지게 넉넉히 받는다.
+   폰에서 주소를 직접 타이핑하는 상황이라 「=1 을 빼먹어서 안 뜬다」가 실제로 일어난다. */
+const SHOW_FPS = /[?&#]fps\b/.test(location.search+location.hash) || /[?&]debug=1/.test(location.search);
+/* ── 원인 좁히기 스위치 (?off=...) ──
+   실기기에서만 나는 버벅임이라 폰에서 직접 하나씩 꺼보게 만든 것. 쉼표로 여러 개.
+     off=sfx      효과음 · off=bgm 배경음 · off=shadow 몹 그림자 · off=hpbar 몹 체력바
+     off=fx       이펙트 아이콘/불꽃 · off=dmg 피해 숫자 · off=depth 앞뒤 정렬(z-index)
+     off=hit      피격 빨간 물들임 · off=anim CSS 애니메이션 · off=bg 필드 배경 그림
+   ★주소에 안 쓰면 아무것도 안 꺼진다 — 평소 빌드·매체 검수에는 영향이 없다. */
+const OFF=(function(){ const m=/[?&]off=([^&#]*)/.exec(location.search);
+  return m ? decodeURIComponent(m[1]).toLowerCase().split(',').map(x=>x.trim()).filter(Boolean) : []; })();
+function isOff(k){ return OFF.indexOf(k)>=0; }
+if(OFF.length){
+  const css=[];
+  if(isOff('shadow')) css.push('.mob .msh{display:none !important;}');
+  if(isOff('hpbar'))  css.push('.mob .mhp{display:none !important;}');
+  if(isOff('hit'))    css.push('.mob .mi,.mob .fb{filter:none !important;}');
+  if(isOff('anim'))   css.push('*{animation:none !important;}');
+  if(isOff('bg'))     css.push('#fieldBg{display:none !important;}');
+  if(css.length){ const el=document.createElement('style'); el.id='offCss'; el.textContent=css.join('\n');
+    (document.head||document.documentElement).appendChild(el); }
+}
 let fpsEl=null, fpsN=0, fpsMs=0, fpsWorstWin=0, fpsWorstAll=0, fpsHitch=0, fpsMin=0, fpsSec=0;
+/* 프레임 시간을 「우리 JS」와 「그 바깥(스타일·레이아웃·페인트·GC)」으로 갈라 본다.
+   둘 중 어디가 먹는지 모르면 고칠 곳을 못 정한다 — 헤드리스에서 재현이 안 돼 실기기 숫자가 필요하다. */
+let fpsJsMs=0, fpsJsLast=0, fpsJsN=0, fpsJsMax=0, fpsWorstSnap='';
+function fpsJs(ms){ if(!SHOW_FPS) return; fpsJsLast=ms; fpsJsMs+=ms; fpsJsN++; if(ms>fpsJsMax) fpsJsMax=ms; }
 function fpsSample(ms){
   if(!SHOW_FPS) return;
   if(!fpsEl){ fpsEl=document.createElement('div'); fpsEl.id='fpsBox';
@@ -3281,7 +3314,11 @@ function fpsSample(ms){
   if(ms>0 && ms<10000){
     fpsN++; fpsMs+=ms;
     if(ms>fpsWorstWin) fpsWorstWin=ms;
-    if(ms>fpsWorstAll) fpsWorstAll=ms;
+    if(ms>fpsWorstAll){ fpsWorstAll=ms;
+      // 가장 길었던 프레임의 정체 — 그 직전 프레임의 JS 시간과 그때 화면에 있던 것들
+      fpsWorstSnap='js'+Math.round(fpsJsLast)+'ms 몹'+(S?S.mobs.length:0)
+        +' 탄'+(S?S.projs.length:0)+' fx'+fxLive+' '+(S?S.phase:'-');
+    }
     if(ms>50) fpsHitch++;                     // 50ms 초과 = 눈에 걸리는 멈춤
   }
   if(fpsMs<250) return;                        // 0.25초마다 한 번만 다시 쓴다
@@ -3289,13 +3326,18 @@ function fpsSample(ms){
   if(!fpsMin || fps<fpsMin) fpsMin=fps;
   fpsSec+=fpsMs/1000; fpsN=0; fpsMs=0;
   const st=$('#stage');
+  const jsAvg = fpsJsN ? (fpsJsMs/fpsJsN) : 0;
+  const frameAvg = fps ? (1000/fps) : 0;
   fpsEl.textContent =
     'FPS '+fps+'  (최저 '+fpsMin+')\n'
     +'멈춤 '+fpsHitch+'회  최악 '+Math.round(fpsWorstAll)+'ms\n'
-    +'최근최악 '+Math.round(fpsWorstWin)+'ms  경과 '+fpsSec.toFixed(0)+'s\n'
+    +'최악때: '+(fpsWorstSnap||'-')+'\n'
+    +'JS 평균 '+jsAvg.toFixed(1)+'ms (최대 '+Math.round(fpsJsMax)+')\n'
+    +'JS밖 평균 '+Math.max(0,frameAvg-jsAvg).toFixed(1)+'ms  경과 '+fpsSec.toFixed(0)+'s\n'
     +(S ? ('몹'+S.mobs.length+' 탄'+S.projs.length+' 쿠키'+S.members.length+' fx'+fxLive+'  '+S.phase+'\n') : '')
-    +(st?st.clientWidth:0)+'×'+(st?st.clientHeight:0)+'  dpr'+(window.devicePixelRatio||1);
-  fpsWorstWin=0;
+    +(st?st.clientWidth:0)+'×'+(st?st.clientHeight:0)+'  dpr'+(window.devicePixelRatio||1)
+    +(OFF.length?('\n끔: '+OFF.join(',')):'');
+  fpsWorstWin=0; fpsJsMs=0; fpsJsN=0;
 }
 
 /* ── CTA / 재시작 버튼 ── */
