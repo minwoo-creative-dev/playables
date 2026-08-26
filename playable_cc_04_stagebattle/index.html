@@ -1435,8 +1435,16 @@ function SS(){ return Math.min(LC.FW||400, LC.FH||700)/520; }   // 필드 기준
 /* 사용자가 잡는 크기값은 「화면 짧은 변 대비 %」다 — 해상도·비율이 달라져도 같은 비율로 커진다.
    uiK 는 0.72~2.20 으로 잘려 있어 큰 화면에서 더 안 커지므로, 사용자 값에는 안 쓴다.
    기준선은 520 — 짧은 변이 520px 일 때 옛 px 값과 크기가 같다(이관이 /5.2 로 옮겼다). */
-function SREF(){ const st=$('#stage'); return Math.min((st&&st.clientWidth)||window.innerWidth||400,
-                                                       (st&&st.clientHeight)||window.innerHeight||700); }
+/* ★값을 캐시한다 — clientWidth 읽기도 강제 레이아웃이고, tickTimer 가 매 프레임 부른다.
+   화면 크기가 바뀌는 순간(relayout)에만 다시 잰다. */
+let _srefC=0;
+function srefInvalidate(){ _srefC=0; }
+function SREF(){
+  if(_srefC>0) return _srefC;
+  const st=$('#stage');
+  return (_srefC=Math.min((st&&st.clientWidth)||window.innerWidth||400,
+                          (st&&st.clientHeight)||window.innerHeight||700));
+}
 function pctPx(v){ return SREF()*(+v||0)/100; }
 function resolveImg(ref, fallback){ return (ref && PROJECT.assets && PROJECT.assets[ref]) ? PROJECT.assets[ref] : (fallback||''); }
 function cookieById(id){ return (PROJECT.cookies||[]).find(c=>c.id===id); }
@@ -1921,7 +1929,7 @@ function iconsFor(ck){
 function fireCookieFx(m, mode){
   if(!m||!m.el) return;
   const skip = mode==='attack' ? (x=>!x.onAttack) : (x=>!!x.onAttack);
-  const w=m.el.offsetWidth||40, h=m.el.offsetHeight||58;
+  const w=m.w||40, h=m.h||58;      // ★강제 레이아웃 금지 — sizeMembers() 가 기억해 둔 값
   if(!m.icQ) m.icQ=[];
   iconsFor(m.ck).forEach(ic=>{
     if(skip(ic)) return;
@@ -2238,7 +2246,9 @@ function sizeMembers(){
   //        바닥 정렬이라 높이가 제각각이면 쿠키마다 발밑 선이 어긋난다.
   const H = native ? rows.reduce((a,r)=>Math.max(a,r.h),0) : 0;
   rows.forEach(r=>{
-    r.m.el.style.width=r.w+'px'; r.m.el.style.height=(native?H:r.h)+'px';
+    const hh=(native?H:r.h);
+    r.m.el.style.width=r.w+'px'; r.m.el.style.height=hh+'px';
+    r.m.w=r.w; r.m.h=hh;   // ★크기를 여기서 기억해 둔다 — 루프에서 offsetWidth 를 읽으면 안 된다(아래 참고)
     if(r.m.faceDir==null) r.m.el.style.setProperty('--flip', r.m.ck.flipBattle?'-1':'1');   // 이동 방향 반전이 잡혔으면 건드리지 않음
   });
 }
@@ -2658,7 +2668,11 @@ function step(dt){
       if(ics.length){
         if(!m.icT) m.icT={};
         if(!m.icQ) m.icQ=[];
-        const w=m.el.offsetWidth||40, h=m.el.offsetHeight||58;
+        /* ★offsetWidth 를 읽으면 브라우저가 그 자리에서 레이아웃을 다시 계산한다(강제 동기 레이아웃).
+           여기는 매 프레임 × 쿠키 6명이라 프레임당 6번이었고, 그 비용은 화면의 엘리먼트 수 —
+           즉 몹 수에 비례해 커졌다. 실기기에서 JS 가 프레임당 90ms 를 먹고 몹이 사라지면 60fps 로
+           돌아오던 원인이다(2026-08-26). 크기는 sizeMembers() 가 정하므로 그때 기억한 값을 쓴다. */
+        const w=m.w||40, h=m.h||58;
         ics.forEach(ic=>{
           // 공격시 발동 — 발사 순간에 띄운다. 스스로 못 쏘는 서포터만 교전 중에 한해 주기로 대신 띄운다.
           if(ic.onAttack && !(m.ck.noAttack && atkLive(m))) return;
@@ -3694,7 +3708,7 @@ function initTextPosAnchors(){
 let _rzT=null;
 /* 회전·리사이즈 때 다시 재야 하는 것들 — applyBrand(로고 높이 상한이 화면 높이 기준), bgLayoutApply(가로 별도 배경값) */
 /* 크기값이 화면 비례(%)라 회전·리사이즈 때 문구 크기를 다시 계산해야 한다 */
-function relayout(){ pickOrient(); applyRosterLabels(); refreshLayoutCache(); applyBrand(); bgLayoutApply();
+function relayout(){ srefInvalidate(); pickOrient(); applyRosterLabels(); refreshLayoutCache(); applyBrand(); bgLayoutApply();
   initTextPosAnchors(); applyTextPos(); refreshSceneTexts(); requestAnimationFrame(syncBossBar); }
 window.addEventListener('resize', ()=>{ clearTimeout(_rzT); _rzT=setTimeout(()=>{ relayout(); if(S){ S.swarmX=clamp(S.swarmX,24,LC.FW-24); S.swarmY=clamp(S.swarmY,24,LC.FH-24); sizeMembers(); } }, 60); });
 window.addEventListener('orientationchange', ()=>{ setTimeout(relayout, 120); });
