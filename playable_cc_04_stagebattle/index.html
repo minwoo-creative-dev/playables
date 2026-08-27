@@ -791,7 +791,10 @@ let mraidReady = (typeof mraid==='undefined');
 
 /* ── 오디오 (자동재생 금지 + 풀) ── */
 let userGestured=false, pendingBgm=false, bgmAudio=null, lastShootSnd=0;
-document.addEventListener('pointerdown', function onFirst(){ userGestured=true; if(pendingBgm){ pendingBgm=false; playBgm(); } }, {once:true, capture:true});
+document.addEventListener('pointerdown', function onFirst(){ userGestured=true;
+  try{ const c=audioCtx(); if(c && c.state==='suspended') c.resume(); }catch(_){}   // 재생 허가는 제스처 안에서만 난다
+  warmSfx();                                                                        // 로드 때 못 끝냈으면 여기서 마저
+  if(pendingBgm){ pendingBgm=false; playBgm(); } }, {once:true, capture:true});
 const clamp01=v=>Math.max(0,Math.min(1,v));
 function audSrc(key){ return (key && PROJECT.audio && PROJECT.audio[key]) || ''; }
 function sndCfg(evt){ return (PROJECT.sounds&&PROJECT.sounds[evt])||{}; }
@@ -815,19 +818,84 @@ function playSfxOr(evt, fallback, force){
 function fxSoundOf(type){ return (PROJECT.fxSound||{})[type]||''; }
 const _fxSndT=Object.create(null);
 const FXSND_GAP=90;
+/* 몹 사망음 — 무리가 한 프레임에 우르르 죽으면 같은 소리가 그만큼 겹쳐 찢어진다.
+   발사(90ms)·타격(70ms)·이펙트(90ms)엔 이미 있던 게이트가 여기만 없었다. */
+const MOBDIE_GAP=70; let lastMobDieSnd=-1e9;
+function playMobDieSfx(){
+  const n=performance.now(); if(n-lastMobDieSnd<MOBDIE_GAP) return;
+  lastMobDieSnd=n; playSfx('mobDie');
+}
 function playFxSfx(evt){
   if(!evt) return;
   const now=performance.now(); if(now-(_fxSndT[evt]||-1e9) < FXSND_GAP) return;
   _fxSndT[evt]=now; playSfx(evt);
 }
+/* ── 효과음 — Web Audio 우선, `<audio>` 는 폴백 ──
+   `<audio>` 는 재생할 때마다 메인 스레드에서 원본을 디코드한다. data URI 로 박아 넣은 자산이면
+   그 비용이 그대로 프레임을 잡아먹어서, 아이폰 실측으로 playSfx 한 번에 최대 86ms 가 나왔다
+   (hitMob 64ms · hitBoss 53ms 는 안에서 부르는 이 playSfx 를 품고 있던 시간이다).
+   그래서 첫 터치 때 등록된 효과음을 한 번씩 **비동기로** 디코드해두고(메인 스레드 밖에서 푼다),
+   재생은 버퍼 소스 하나 붙여 start() 하는 것으로 끝낸다 — 사실상 공짜다.
+   디코드가 안 되는 포맷·구형 브라우저면 종전 `<audio>` 풀로 자동 폴백하므로
+   최악이라도 지금보다 나빠지지 않는다. 겹쳐 재생 4개 제한도 이 경로에선 사라진다. */
+const sfxBufs=Object.create(null);      // 자산키 → AudioBuffer (null = 디코드 진행 중)
+const sfxDead=Object.create(null);      // 디코드가 안 되는 키 — 두 번 시도하지 않는다
+function sfxDecode(key){
+  if(!key || (key in sfxBufs) || sfxDead[key]) return;
+  const src=audSrc(key); if(!src) return;
+  const ctx=audioCtx(); if(!ctx){ sfxDead[key]=1; return; }
+  let ab=null; try{ ab=dataUriToBuf(src); }catch(_){ ab=null; }
+  if(!ab){ sfxDead[key]=1; return; }
+  sfxBufs[key]=null;                    // 진행 중 표식 — 같은 키를 두 번 풀지 않는다
+  const fail=()=>{ delete sfxBufs[key]; sfxDead[key]=1; };
+  try{ ctx.decodeAudioData(ab).then(b=>{ sfxBufs[key]=b; }).catch(fail); }catch(_){ fail(); }
+}
+/* 첫 터치 직후 한 번 — 프로젝트에 걸린 효과음을 전부 미리 풀어둔다.
+   BGM 은 제 경로(bgmBufs)가 따로 있으니 건드리지 않는다.
+   이펙트 효과음(fxSound)도 값이 결국 sounds 의 이벤트 이름이라 이 순회에 다 들어온다. */
+function warmSfx(){
+  if(!PROJECT) return;
+  const map=PROJECT.sounds||{};
+  Object.keys(map).forEach(evt=>{ if(evt==='bgm') return; sndItems(evt).forEach(it=>sfxDecode(it.key)); });
+}
+/* 첫 터치를 기다리면 늦다 — 그 터치가 곧 첫 효과음이라 버퍼가 아직 없어 `<audio>` 로 떨어진다
+   (실기기에서 선택 화면 최악 멈춤 818ms 가 정확히 그 지점이었다).
+   AudioContext 는 제스처 전에도 만들 수 있고(멈춘 상태로 생긴다) 디코드도 그 상태에서 된다 —
+   소리를 내는 것만 제스처가 필요하니, 푸는 일은 미리 해둔다.
+   화면이 뜨는 걸 늦추지 않게 한가할 때로 미룬다. */
+function warmSfxIdle(){
+  const go=()=>{ try{ warmSfx(); }catch(_){} };
+  if(window.requestIdleCallback) requestIdleCallback(go, {timeout:1500}); else setTimeout(go, 300);
+}
+/* 반환 핸들 — 에디터 미리듣기가 `<audio>` 처럼 다룰 수 있게 onended/pause/currentTime 만 맞춰준다. */
+function playOneSfxBuf(key, vol){
+  const buf=sfxBufs[key]; if(!buf) return null;      // 아직 안 풀렸으면 이번 판은 `<audio>` 로
+  const ctx=audioCtx(); if(!ctx) return null;
+  try{ if(ctx.state==='suspended') ctx.resume(); }catch(_){}
+  try{
+    const g=ctx.createGain(); g.gain.value=vol; g.connect(ctx.destination);
+    const nd=ctx.createBufferSource(); nd.buffer=buf; nd.connect(g);
+    const h={ onended:null, currentTime:0, pause(){ try{ nd.stop(); }catch(_){} } };
+    nd.onended=()=>{ try{ g.disconnect(); }catch(_){} if(typeof h.onended==='function') h.onended(); };
+    nd.start(0);
+    return h;
+  }catch(_){ return null; }
+}
 const audPools=Object.create(null);
-function playOneSfx(key, vol){
+function playOneSfxEl(key, vol){
   const src=audSrc(key); if(!src) return null;
   let pool=audPools[key]||(audPools[key]=[]); let a=null;
   for(let i=0;i<pool.length;i++){ if(pool[i].paused||pool[i].ended){ a=pool[i]; break; } }
   if(!a){ if(pool.length<4){ a=new Audio(src); pool.push(a); } else { a=pool[0]; } }
   try{ a.volume=vol; a.currentTime=0; a.play().catch(()=>{}); }catch(_){}
   return a;
+}
+function playOneSfx(key, vol){
+  if(!sfxDead[key]){
+    sfxDecode(key);                                  // 미리 풀어두는 데 실패했더라도 여기서 한 번 더
+    const h=playOneSfxBuf(key, vol); if(h) return h;
+  }
+  return playOneSfxEl(key, vol);
 }
 /* 반환값 = 실제로 재생한 Audio 배열(에디터 미리듣기가 정지시킬 수 있게).
    음소거·제스처 전이면 undefined, 등록된 소리가 없으면 null. */
@@ -2861,7 +2929,7 @@ function step(dt){
   }
   // ── 죽은 몹 정리 ──
   for(let i=S.mobs.length-1;i>=0;i--){ if(S.mobs[i].hp<=0){ const mob=S.mobs[i]; popSpark(mob.x, mob.y, (mob.hue!=null?mob.hue:12), 7);
-    flingOut(mob.el, mob.x, mob.y); S.mobs.splice(i,1); S.kills++; playSfx('mobDie'); } }
+    flingOut(mob.el, mob.x, mob.y); S.mobs.splice(i,1); S.kills++; playMobDieSfx(); } }
   if(EDIT) S.heroHp=clamp(S.heroHp, S.heroHpMax*0.2, S.heroHpMax);   // 에디터 프리뷰: 무리가 안 움직여도 자동 패배로 프리뷰가 끊기지 않게(바 20%↑ 유지)
   // ── 종료 판정 ──
   if(S.phase==='boss' && S.bossHp<=0){ bossDown(); }
@@ -3596,6 +3664,7 @@ function boot(){
   pickOrient(); refreshLayoutCache(); applyChrome();
   buildCustomTexts();
   startGame();
+  warmSfxIdle();
   lastT=performance.now(); rafId=requestAnimationFrame(loop);
 }
 function _deepMerge(t,s){ for(const k in s){ if(s[k]&&typeof s[k]==='object'&&!Array.isArray(s[k])){ if(!t[k]||typeof t[k]!=='object') t[k]={}; _deepMerge(t[k],s[k]); } else t[k]=s[k]; } }
