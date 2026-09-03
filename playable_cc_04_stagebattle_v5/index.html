@@ -2965,16 +2965,18 @@ function step(dt){
       b.entered=true;
       bossMove(b, dt);
       bossFace(b);
-      // 이동 프레임 2장 — 미니몹과 같은 방식
-      if(b.hasW2){ b.wT+=dt;
-        const iv=Math.max(0.04, LV(PROJECT.boss||{},'walkMs',200)/1000);
-        if(b.wT>=iv){ b.wT-=iv; b.f2=!b.f2; b.el.classList.toggle('f2', b.f2); } }
       const cd = N ? nearMember(b.x,b.y)[0] : Math.hypot(S.swarmX-b.x,S.swarmY-b.y);
       const touching = cd<b.contactR+CR;
       if(touching) takeDamage(b.dmg*dt);   // 보스도 쿠키 각자 기준
       bossAtkPose(b, touching, dt);        // 닿아 있는 동안 주기적으로 공격 포즈
       if(auraDmg>0 && cd <= auraR+b.r){ S.bossHp-=auraDmg; updateBossBar(false); }   // 장판 피해
     }
+    /* 이동 프레임 2장 — 미니몹과 같은 방식.
+       ★등장 낙하 중에도 돌려야 한다. 예전엔 위 else 안에 있어서 다 내려온 뒤에야 시작했고,
+         그동안 정지 그림으로 쭉 내려와 「인형이 떨어지는」 것처럼 보였다(2026-09-03 신고). */
+    if(b.hasW2){ b.wT+=dt;
+      const iv=Math.max(0.04, LV(PROJECT.boss||{},'walkMs',200)/1000);
+      if(b.wT>=iv){ b.wT-=iv; b.f2=!b.f2; b.el.classList.toggle('f2', b.f2); } }
   }
   // ── 발사체 이동 + 충돌 ──
   for(let i=S.projs.length-1;i>=0;i--){ const p=S.projs[i]; p.life-=dt;
